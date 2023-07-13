@@ -108,7 +108,6 @@ pub fn aggregate_col(
     let mut dirs = CommitEntryReader::new(repo, commit)?.list_dir_children(directory)?;
     dirs.push(directory.to_path_buf());
 
-
     if dirs.is_empty() {
         return Err(OxenError::path_does_not_exist(directory));
     }
@@ -148,7 +147,7 @@ pub fn aggregate_col(
             .unwrap();
 
         // log::debug!("SORTED df for dir {:?}: {:?}", dir, df);
-        
+
         if let Some(cdf) = combined_df {
             // log::debug!("START for dir {:?}: {:?}", dir, cdf);
 

@@ -37,6 +37,7 @@ pub fn compute(repo: &LocalRepository, commit: &Commit) -> Result<(), OxenError>
     let reader = CommitEntryReader::new(repo, commit)?;
     let dirs = reader.list_dirs()?;
     log::debug!("Computing size of {} dirs", dirs.len());
+    log::debug!("in here computing content statistics!!!!!");
     let columns = vec!["data_type", "mime_type"];
     for dir in dirs {
         for column in columns.iter() {

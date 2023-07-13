@@ -176,7 +176,7 @@ pub fn aggregate_col(
     if combined_df.is_none() {
         return Ok(DataFrame::default());
     }
-    log::debug!("COMBINED df {:?}", combined_df);
+
     Ok(combined_df.unwrap())
 }
 

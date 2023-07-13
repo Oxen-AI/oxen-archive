@@ -137,7 +137,6 @@ pub async fn agg_dir(
 
     if cached_path.exists() {
         let mut df = core::df::tabular::read_df(&cached_path, DFOpts::empty())?;
-
         let response = JsonDataFrameSliceResponse {
             status: StatusMessage::resource_found(),
             full_size: JsonDataSize {

@@ -228,26 +228,23 @@ impl LocalRepository {
         let toml = toml::to_string(&local_repo)?;
         util::fs::write_to_path(&repo_config_file, &toml)?;
 
-        // If opts.all is true, pull all branches, otherwise just the specified or default
-        let remote_branches: Vec<RemoteBranch> = if opts.all {
-            let branches = api::remote::branches::list(&repo).await?;
-            log::debug!("Here are the branches we've found: {:?}", branches);
-            branches
-                .iter()
-                .map(|b| RemoteBranch::from_branch(&b.name))
-                .collect()
-        } else {
-            vec![RemoteBranch::from_branch(&opts.branch)]
-        };
-
-        // Pull all commit objects, but not entries;
+        // Pull all commit objects, but not entries
+        let rb = RemoteBranch::from_branch(&opts.branch);
         let indexer = EntryIndexer::new(&local_repo)?;
-        for rb in &remote_branches {
-            log::debug!("pulling branch: {}", rb.branch);
-            local_repo
-                .maybe_pull_entries(&repo, &indexer, &rb, opts)
-                .await?;
+
+        if opts.all {
+            let remote_branches = api::remote::branches::list(&repo).await?;
+            for branch in remote_branches {
+                let remote_branch = RemoteBranch::from_branch(&branch.name);
+                indexer
+                    .pull_most_recent_commit_object(&repo, &remote_branch, false)
+                    .await?;
+            }
         }
+
+        local_repo
+            .maybe_pull_entries(&repo, &indexer, &rb, opts)
+            .await?;
 
         Ok(local_repo)
     }

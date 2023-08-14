@@ -193,20 +193,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_rm_staged_file() -> Result<(), OxenError> {
-        test::run_training_data_repo_test_no_commits_async(|repo| async move {
+        test::run_select_data_repo_test_no_commits_async("README", |repo| async move {
             // Stage the README.md file
             let path = Path::new("README.md");
             command::add(&repo, repo.path.join(path))?;
 
             let status = command::status(&repo)?;
-            assert_eq!(status.added_files.len(), 1);
-            assert!(status.added_files.contains_key(path));
+            assert_eq!(status.staged_files.len(), 1);
+            assert!(status.staged_files.contains_key(path));
 
             let opts = RmOpts::from_staged_path(path);
             rm::rm(&repo, &opts).await?;
 
             let status = command::status(&repo)?;
-            assert_eq!(status.added_files.len(), 0);
+            assert_eq!(status.staged_files.len(), 0);
 
             Ok(())
         })
@@ -215,14 +215,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_rm_staged_dir_without_recursive_flag_should_be_error() -> Result<(), OxenError> {
-        test::run_training_data_repo_test_no_commits_async(|repo| async move {
-            // Stage the README.md file
+        test::run_select_data_repo_test_no_commits_async("train", |repo| async move {
+            // Stage the data
             let path = Path::new("train");
             command::add(&repo, repo.path.join(path))?;
 
             let status = command::status(&repo)?;
             status.print_stdout();
-            assert_eq!(status.added_dirs.len(), 1);
+            assert_eq!(status.staged_dirs.len(), 1);
 
             let opts = RmOpts {
                 path: path.to_path_buf(),
@@ -240,14 +240,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_rm_staged_dir() -> Result<(), OxenError> {
-        test::run_training_data_repo_test_no_commits_async(|repo| async move {
-            // Stage the README.md file
+        test::run_select_data_repo_test_no_commits_async("train", |repo| async move {
+            // Stage the data
             let path = Path::new("train");
             command::add(&repo, repo.path.join(path))?;
 
             let status = command::status(&repo)?;
             status.print_stdout();
-            assert_eq!(status.added_dirs.len(), 1);
+            assert_eq!(status.staged_dirs.len(), 1);
 
             let opts = RmOpts {
                 path: path.to_path_buf(),
@@ -259,8 +259,8 @@ mod tests {
 
             let status = command::status(&repo)?;
             status.print_stdout();
-            assert_eq!(status.added_dirs.len(), 0);
-            assert_eq!(status.added_files.len(), 0);
+            assert_eq!(status.staged_dirs.len(), 0);
+            assert_eq!(status.staged_files.len(), 0);
 
             Ok(())
         })
@@ -269,13 +269,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_rm_staged_dir_with_slash() -> Result<(), OxenError> {
-        test::run_training_data_repo_test_no_commits_async(|repo| async move {
-            // Stage the README.md file
+        test::run_select_data_repo_test_no_commits_async("train", |repo| async move {
+            // Stage the data
             let path = Path::new("train/");
             command::add(&repo, repo.path.join(path))?;
 
             let status = command::status(&repo)?;
-            assert_eq!(status.added_dirs.len(), 1);
+            assert_eq!(status.staged_dirs.len(), 1);
 
             let opts = RmOpts {
                 path: path.to_path_buf(),
@@ -288,8 +288,8 @@ mod tests {
 
             let status = command::status(&repo)?;
             status.print_stdout();
-            assert_eq!(status.added_dirs.len(), 0);
-            assert_eq!(status.added_files.len(), 0);
+            assert_eq!(status.staged_dirs.len(), 0);
+            assert_eq!(status.staged_files.len(), 0);
 
             Ok(())
         })
@@ -298,7 +298,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rm_file() -> Result<(), OxenError> {
-        test::run_training_data_repo_test_fully_committed_async(|repo| async move {
+        test::run_select_data_repo_test_committed_async("README", |repo| async move {
             // Remove the readme
             let path = Path::new("README.md");
 
@@ -308,9 +308,9 @@ mod tests {
             let status = command::status(&repo)?;
             status.print_stdout();
 
-            assert_eq!(status.added_files.len(), 1);
+            assert_eq!(status.staged_files.len(), 1);
             assert_eq!(
-                status.added_files.get(path).unwrap().status,
+                status.staged_files.get(path).unwrap().status,
                 StagedEntryStatus::Removed
             );
 
@@ -321,7 +321,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rm_dir_without_recursive_flag_should_be_error() -> Result<(), OxenError> {
-        test::run_training_data_repo_test_no_commits_async(|repo| async move {
+        test::run_select_data_repo_test_no_commits_async("train", |repo| async move {
             // Remove the train dir
             let path = Path::new("train");
 
@@ -342,7 +342,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rm_dir_that_is_not_committed_should_throw_error() -> Result<(), OxenError> {
-        test::run_training_data_repo_test_no_commits_async(|repo| async move {
+        test::run_select_data_repo_test_no_commits_async("train", |repo| async move {
             // The train dir is not committed, so should get an error trying to remove
             let train_dir = Path::new("train");
 
@@ -363,7 +363,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rm_dir_with_modifications_should_throw_error() -> Result<(), OxenError> {
-        test::run_training_data_repo_test_fully_committed_async(|repo| async move {
+        test::run_select_data_repo_test_committed_async("train", |repo| async move {
             // Remove the train dir
             let train_dir = Path::new("train");
 
@@ -395,7 +395,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rm_dir() -> Result<(), OxenError> {
-        test::run_training_data_repo_test_fully_committed_async(|repo| async move {
+        test::run_select_data_repo_test_committed_async("train", |repo| async move {
             // Remove the train dir
             let path = Path::new("train");
 
@@ -412,8 +412,8 @@ mod tests {
             let status = command::status(&repo)?;
             status.print_stdout();
 
-            assert_eq!(status.added_files.len(), og_num_files);
-            for (_, staged_entry) in status.added_files.iter() {
+            assert_eq!(status.staged_files.len(), og_num_files);
+            for (_, staged_entry) in status.staged_files.iter() {
                 assert_eq!(staged_entry.status, StagedEntryStatus::Removed);
             }
 
@@ -431,7 +431,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rm_dir_with_slash() -> Result<(), OxenError> {
-        test::run_training_data_repo_test_fully_committed_async(|repo| async move {
+        test::run_select_data_repo_test_committed_async("train", |repo| async move {
             // Remove the train dir
             let path = Path::new("train/");
 
@@ -448,8 +448,8 @@ mod tests {
             let status = command::status(&repo)?;
             status.print_stdout();
 
-            assert_eq!(status.added_files.len(), og_num_files);
-            for (_, staged_entry) in status.added_files.iter() {
+            assert_eq!(status.staged_files.len(), og_num_files);
+            for (_, staged_entry) in status.staged_files.iter() {
                 assert_eq!(staged_entry.status, StagedEntryStatus::Removed);
             }
 
@@ -460,7 +460,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rm_subdir() -> Result<(), OxenError> {
-        test::run_training_data_repo_test_fully_committed_async(|repo| async move {
+        test::run_select_data_repo_test_committed_async("annotations", |repo| async move {
             // Remove the annotations/train subdir
             let path = Path::new("annotations").join("train");
             let og_num_files = util::fs::rcount_files_in_dir(&repo.path.join(&path));
@@ -476,8 +476,8 @@ mod tests {
             let status = command::status(&repo)?;
             status.print_stdout();
 
-            assert_eq!(status.added_files.len(), og_num_files);
-            for (_, staged_entry) in status.added_files.iter() {
+            assert_eq!(status.staged_files.len(), og_num_files);
+            for (_, staged_entry) in status.staged_files.iter() {
                 assert_eq!(staged_entry.status, StagedEntryStatus::Removed);
             }
 

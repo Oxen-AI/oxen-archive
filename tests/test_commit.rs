@@ -19,8 +19,8 @@ fn test_command_commit_file() -> Result<(), OxenError> {
 
         // Get status and make sure it is removed from the untracked and added
         let repo_status = command::status(&repo)?;
-        assert_eq!(repo_status.added_dirs.len(), 0);
-        assert_eq!(repo_status.added_files.len(), 0);
+        assert_eq!(repo_status.staged_dirs.len(), 0);
+        assert_eq!(repo_status.staged_files.len(), 0);
         assert_eq!(repo_status.untracked_files.len(), 0);
         assert_eq!(repo_status.untracked_dirs.len(), 0);
 
@@ -42,8 +42,8 @@ fn test_command_commit_dir() -> Result<(), OxenError> {
 
         let repo_status = command::status(&repo)?;
         repo_status.print_stdout();
-        assert_eq!(repo_status.added_dirs.len(), 0);
-        assert_eq!(repo_status.added_files.len(), 0);
+        assert_eq!(repo_status.staged_dirs.len(), 0);
+        assert_eq!(repo_status.staged_files.len(), 0);
         assert_eq!(repo_status.untracked_files.len(), 2);
         assert_eq!(repo_status.untracked_dirs.len(), 4);
 
@@ -65,8 +65,8 @@ fn test_command_commit_dir_recursive() -> Result<(), OxenError> {
         let repo_status = command::status(&repo)?;
         repo_status.print_stdout();
 
-        assert_eq!(repo_status.added_dirs.len(), 0);
-        assert_eq!(repo_status.added_files.len(), 0);
+        assert_eq!(repo_status.staged_dirs.len(), 0);
+        assert_eq!(repo_status.staged_files.len(), 0);
         assert_eq!(repo_status.untracked_files.len(), 2);
         assert_eq!(repo_status.untracked_dirs.len(), 4);
 
@@ -79,7 +79,7 @@ fn test_command_commit_dir_recursive() -> Result<(), OxenError> {
 
 #[tokio::test]
 async fn test_command_commit_top_level_dir_then_revert() -> Result<(), OxenError> {
-    test::run_training_data_repo_test_no_commits_async(|repo| async move {
+    test::run_select_data_repo_test_no_commits_async("train", |repo| async move {
         // Get the original branch name
         let orig_branch = api::local::branches::current_branch(&repo)?.unwrap();
 
@@ -95,13 +95,13 @@ async fn test_command_commit_top_level_dir_then_revert() -> Result<(), OxenError
         command::add(&repo, &train_path)?;
         // Make sure we can get the status
         let status = command::status(&repo)?;
-        assert_eq!(status.added_dirs.len(), 1);
+        assert_eq!(status.staged_dirs.len(), 1);
 
         // Commit changes
         command::commit(&repo, "Adding train dir")?;
         // Make sure we can get the status and they are no longer added
         let status = command::status(&repo)?;
-        assert_eq!(status.added_dirs.len(), 0);
+        assert_eq!(status.staged_dirs.len(), 0);
 
         // checkout OG and make sure it removes the train dir
         command::checkout(&repo, orig_branch.name).await?;
@@ -119,7 +119,7 @@ async fn test_command_commit_top_level_dir_then_revert() -> Result<(), OxenError
 
 #[tokio::test]
 async fn test_command_commit_second_level_dir_then_revert() -> Result<(), OxenError> {
-    test::run_training_data_repo_test_no_commits_async(|repo| async move {
+    test::run_select_data_repo_test_no_commits_async("annotations", |repo| async move {
         // Get the original branch name
         let orig_branch = api::local::branches::current_branch(&repo)?.unwrap();
 
@@ -166,9 +166,9 @@ fn test_command_commit_removed_dir() -> Result<(), OxenError> {
 
         // Make sure we have the correct amount of files tagged as removed
         let status = command::status(&repo)?;
-        assert_eq!(status.added_files.len(), og_file_count);
+        assert_eq!(status.staged_files.len(), og_file_count);
         assert_eq!(
-            status.added_files.iter().next().unwrap().1.status,
+            status.staged_files.iter().next().unwrap().1.status,
             StagedEntryStatus::Removed
         );
 
@@ -181,7 +181,7 @@ fn test_command_commit_removed_dir() -> Result<(), OxenError> {
 
 #[tokio::test]
 async fn test_commit_after_merge_conflict() -> Result<(), OxenError> {
-    test::run_training_data_repo_test_no_commits_async(|repo| async move {
+    test::run_select_data_repo_test_no_commits_async("labels", |repo| async move {
         let labels_path = repo.path.join("labels.txt");
         command::add(&repo, &labels_path)?;
         command::commit(&repo, "adding initial labels file")?;

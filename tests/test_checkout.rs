@@ -258,7 +258,7 @@ async fn test_command_checkout_modified_file() -> Result<(), OxenError> {
 
 #[tokio::test]
 async fn test_command_checkout_modified_file_in_subdirectory() -> Result<(), OxenError> {
-    test::run_training_data_repo_test_no_commits_async(|repo| async move {
+    test::run_select_data_repo_test_no_commits_async("annotations", |repo| async move {
         // Get the original branch name
         let orig_branch = api::local::branches::current_branch(&repo)?.unwrap();
 
@@ -300,7 +300,7 @@ async fn test_command_checkout_modified_file_in_subdirectory() -> Result<(), Oxe
 
 #[tokio::test]
 async fn test_command_checkout_modified_file_from_fully_committed_repo() -> Result<(), OxenError> {
-    test::run_training_data_repo_test_no_commits_async(|repo| async move {
+    test::run_select_data_repo_test_no_commits_async("annotations", |repo| async move {
         // Get the original branch name
         let orig_branch = api::local::branches::current_branch(&repo)?.unwrap();
 
@@ -322,7 +322,7 @@ async fn test_command_checkout_modified_file_from_fully_committed_repo() -> Resu
         command::add(&repo, &one_shot_path)?;
         let status = command::status(&repo)?;
         assert_eq!(status.modified_files.len(), 0);
-        assert_eq!(status.added_files.len(), 1);
+        assert_eq!(status.staged_files.len(), 1);
 
         let status = command::status(&repo)?;
         status.print_stdout();
@@ -345,7 +345,7 @@ async fn test_command_checkout_modified_file_from_fully_committed_repo() -> Resu
 
 #[tokio::test]
 async fn test_command_remove_dir_then_revert() -> Result<(), OxenError> {
-    test::run_training_data_repo_test_no_commits_async(|repo| async move {
+    test::run_select_data_repo_test_no_commits_async("train", |repo| async move {
         // Get the original branch name
         let orig_branch = api::local::branches::current_branch(&repo)?.unwrap();
 

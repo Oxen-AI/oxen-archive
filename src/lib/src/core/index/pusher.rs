@@ -98,6 +98,12 @@ pub async fn push_remote_repo(
     push_missing_commit_entries(local_repo, &remote_repo, &branch, &unsynced_entries_commits)
         .await?;
     // rpush_missing_commit_entries(&local_repo, &remote_repo, unsynced_commits, &branch);
+    // update the branch after everything else is synced
+    log::debug!(
+        "Updating remote branch {:?} to commit {:?}",
+        &branch.name,
+        &head_commit
+    );
 
     api::remote::branches::update(&remote_repo, &branch.name, &head_commit).await?;
     println!(
@@ -733,9 +739,9 @@ mod tests {
     use crate::command;
     use crate::constants;
     use crate::core::index::pusher;
-    use crate::core::index::pusher::UnsyncedCommitEntries;
+    // use crate::core::index::pusher::UnsyncedCommitEntries;
     use crate::error::OxenError;
-    use std::collections::VecDeque;
+    // use std::collections::VecDeque;
 
     use crate::test;
 

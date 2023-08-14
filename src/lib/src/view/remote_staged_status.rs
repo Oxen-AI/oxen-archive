@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     model::{
-        metadata::metadata_entry_type::EntryTypeMetadata, LocalRepository, MetadataEntry, ModEntry,
-        StagedData, StagedEntry, SummarizedStagedDirStats,
+        LocalRepository, MetadataEntry, ModEntry, StagedData, StagedEntry, SummarizedStagedDirStats,
     },
     util,
 };
@@ -67,7 +66,7 @@ impl RemoteStagedStatus {
         page_size: usize,
     ) -> RemoteStagedStatus {
         let added_entries: Vec<MetadataEntry> =
-            RemoteStagedStatus::added_to_meta_entry(repo, &staged.added_files);
+            RemoteStagedStatus::added_to_meta_entry(repo, &staged.staged_files);
         let modified_entries: Vec<MetadataEntry> =
             RemoteStagedStatus::modified_to_meta_entry(repo, &staged.modified_files);
 
@@ -77,7 +76,7 @@ impl RemoteStagedStatus {
             RemoteStagedStatus::paginate_entries(modified_entries, page_num, page_size);
 
         RemoteStagedStatus {
-            added_dirs: staged.added_dirs.to_owned(),
+            added_dirs: staged.staged_dirs.to_owned(),
             added_files: added_paginated,
             modified_files: modified_paginated,
         }
@@ -117,14 +116,7 @@ impl RemoteStagedStatus {
                     extension: util::fs::file_extension(&full_path),
                     // not committed so does not have a resource or meta data computed
                     resource: None,
-                    metadata: EntryTypeMetadata {
-                        dir: None,
-                        text: None,
-                        image: None,
-                        video: None,
-                        audio: None,
-                        tabular: None,
-                    },
+                    metadata: None,
                 }
             })
             .collect()

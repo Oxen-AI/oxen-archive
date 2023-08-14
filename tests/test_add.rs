@@ -17,8 +17,8 @@ fn test_command_add_file() -> Result<(), OxenError> {
         command::add(&repo, &hello_file)?;
         // Get status and make sure it is removed from the untracked, and added to the tracked
         let repo_status = command::status(&repo)?;
-        assert_eq!(repo_status.added_dirs.len(), 0);
-        assert_eq!(repo_status.added_files.len(), 1);
+        assert_eq!(repo_status.staged_dirs.len(), 0);
+        assert_eq!(repo_status.staged_files.len(), 1);
         assert_eq!(repo_status.untracked_files.len(), 0);
         assert_eq!(repo_status.untracked_dirs.len(), 0);
 
@@ -40,7 +40,7 @@ fn test_command_add_modified_file_in_subdirectory() -> Result<(), OxenError> {
         command::add(&repo, annotation_dir_path)?;
         let status = command::status(&repo)?;
         status.print_stdout();
-        assert_eq!(status.added_files.len(), 1);
+        assert_eq!(status.staged_files.len(), 1);
         command::commit(&repo, "Changing one shot")?;
         let status = command::status(&repo)?;
         assert!(status.is_clean());
@@ -89,7 +89,7 @@ fn test_command_add_dot_should_not_add_new_files() -> Result<(), OxenError> {
 
 #[tokio::test]
 async fn test_can_add_merge_conflict() -> Result<(), OxenError> {
-    test::run_training_data_repo_test_no_commits_async(|repo| async move {
+    test::run_select_data_repo_test_no_commits_async("labels", |repo| async move {
         let labels_path = repo.path.join("labels.txt");
         command::add(&repo, &labels_path)?;
         command::commit(&repo, "adding initial labels file")?;
@@ -125,7 +125,7 @@ async fn test_can_add_merge_conflict() -> Result<(), OxenError> {
         // Adding should add to added files
         let status = command::status(&repo)?;
 
-        assert_eq!(status.added_files.len(), 1);
+        assert_eq!(status.staged_files.len(), 1);
 
         // Adding should get rid of the merge conflict
         assert_eq!(status.merge_conflicts.len(), 0);
@@ -150,13 +150,18 @@ fn test_add_nested_nlp_dir() -> Result<(), OxenError> {
         //   classification/
         //     annotations/
         assert_eq!(
-            status.added_dirs.paths.get(Path::new("nlp")).unwrap().len(),
+            status
+                .staged_dirs
+                .paths
+                .get(Path::new("nlp"))
+                .unwrap()
+                .len(),
             3
         );
         // Should add sub files
         // nlp/classification/annotations/train.tsv
         // nlp/classification/annotations/test.tsv
-        assert_eq!(status.added_files.len(), 2);
+        assert_eq!(status.staged_files.len(), 2);
 
         Ok(())
     })

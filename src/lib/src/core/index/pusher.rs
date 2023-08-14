@@ -5,7 +5,7 @@ use crate::api::remote::commits::ChunkParams;
 use bytesize::ByteSize;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use std::io::{BufReader, Read};
 use std::sync::Arc;
@@ -96,8 +96,6 @@ pub async fn push_remote_repo(
     push_missing_commit_dbs(&local_repo, &remote_repo, unsynced_db_commits).await?;
 
     println!("🐂 Identifying commits with unsynced entries...");
-
-    // std::thread::sleep(std::time::Duration::from_millis(5000));
 
     // Get commit_entries_to_sync
 
@@ -287,10 +285,12 @@ async fn push_missing_commit_entries(
     commits: &Vec<Commit>,
 ) -> Result<(), OxenError> {
     log::debug!("rpush_entries num unsynced {}", commits.len());
-    println!("🐂 Pushing entries for {} commits", commits.len());
+    println!("🐂 Computing diffs for {} commits", commits.len());
 
+    let bar = Arc::new(ProgressBar::new(commits.len() as u64));
     let mut unsynced_commit_entries: Vec<UnsyncedCommitEntries> = Vec::new();
     let commit_reader = CommitReader::new(local_repo)?;
+    let mut total_size = 0;
     // Gather our vec unsynced commits into unsyncedcommitentries
     for commit in commits {
         // Handle root
@@ -308,18 +308,24 @@ async fn push_missing_commit_entries(
 
             let entries = read_unsynced_entries(local_repo, &local_parent, &commit)?;
 
+            // Calculate entries size for progress bar
+            let entries_size = api::local::entries::compute_entries_size(&entries)?;
+            total_size += entries_size;
+
             unsynced_commit_entries.push(UnsyncedCommitEntries {
                 commit: commit.to_owned(),
                 entries,
             });
         }
+        bar.inc(1);
     }
 
-    let print_opts = PrintOpts {
-        verbose: commits.len() < MANY_COMMITS,
-    };
+    bar.finish();
 
-    let bar = ProgressBar::new(commits.len() as u64);
+    println!("🐂 Pushing {} commits, total size {}", commits.len(), total_size);
+
+    let bar = Arc::new(ProgressBar::new(total_size as u64));
+    bar.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({eta})").map_err(|_| OxenError::basic_str("Failed to set progress bar style"))?);
     for unsynced in unsynced_commit_entries.iter() {
         let commit = &unsynced.commit;
         let entries = &unsynced.entries;
@@ -329,10 +335,9 @@ async fn push_missing_commit_entries(
             branch,
             entries,
             commit,
-            &print_opts,
+            &bar,
         )
         .await?;
-        bar.inc(1);
     }
     bar.finish();
     Ok(())
@@ -398,7 +403,7 @@ async fn push_entries(
     branch: &Branch,
     entries: &[CommitEntry],
     commit: &Commit,
-    print_opts: &PrintOpts,
+    bar: &Arc<ProgressBar>,
 ) -> Result<(), OxenError> {
     log::debug!(
         "PUSH ENTRIES {} -> {} -> '{}'",
@@ -406,22 +411,7 @@ async fn push_entries(
         commit.id,
         commit.message
     );
-
-    if print_opts.verbose {
-        println!("🐂 push computing size...");
-    };
-
     let total_size = api::local::entries::compute_entries_size(entries)?;
-
-    if !entries.is_empty() && print_opts.verbose {
-        println!(
-            "Pushing {} files with size {}",
-            entries.len(),
-            ByteSize::b(total_size)
-        );
-    }
-
-    let bar = Arc::new(ProgressBar::new(total_size));
 
     // Some files may be much larger than others....so we can't just zip them up and send them
     // since bodies will be too big. Hence we chunk and send the big ones, and bundle and send the small ones
@@ -446,7 +436,7 @@ async fn push_entries(
         larger_entries,
         commit,
         AVG_CHUNK_SIZE,
-        &bar,
+        bar,
     );
     let small_entries_sync = bundle_and_send_small_entries(
         local_repo,
@@ -454,7 +444,7 @@ async fn push_entries(
         smaller_entries,
         commit,
         AVG_CHUNK_SIZE,
-        &bar,
+        bar,
     );
 
     match tokio::join!(large_entries_sync, small_entries_sync) {

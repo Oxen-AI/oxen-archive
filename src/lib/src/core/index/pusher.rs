@@ -166,6 +166,8 @@ async fn push_missing_commit_objects(
     let mut unsynced_commits: Vec<UnsyncedCommitEntries> = Vec::new();
     println!("🐂 Calculating size for {} unsynced commits", commits.len());
     let bar = ProgressBar::new(commits.len() as u64);
+    let commit_reader = CommitReader::new(local_repo)?;
+
     for commit in commits {
         // Root commit
         if commit.parent_ids.is_empty() {
@@ -174,7 +176,6 @@ async fn push_missing_commit_objects(
                 entries: vec![],
             });
         }
-        let commit_reader = CommitReader::new(local_repo)?;
         for parent_id in commit.parent_ids.iter() {
             let local_parent = commit_reader
                 .get_commit_by_id(parent_id)?
@@ -335,6 +336,7 @@ async fn push_missing_commit_entries(
         )
         .map_err(|_| OxenError::basic_str("Failed to set progress bar style"))?,
     );
+
     for unsynced in unsynced_commit_entries.iter() {
         let commit = &unsynced.commit;
         let entries = &unsynced.entries;

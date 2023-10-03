@@ -96,7 +96,7 @@ pub fn update_version_files_up(repo: &LocalRepository) -> Result<(), OxenError> 
                 }
             }
             Err(err) => {
-                log::error!("Error walking directory {:?}\nErr: {}", versions_dir, err);
+                log::warn!("Error walking directory {:?}\nErr: {}", versions_dir, err);
             }
         }
     }

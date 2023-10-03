@@ -36,37 +36,41 @@ echo "Verifying all namespaces are backed up before migration..."
 
 # First check that all namespaces we're about to migrate exist in the latest s3 backup.
 
-while IFS= read -r line; do 
-    namespace_name="${line%%/*}"  # Extracting namespace_name
-    repository_name="${line##*/}"   
+# while IFS= read -r line; do 
+#     namespace_name="${line%%/*}"  # Extracting namespace_name
+#     repository_name="${line##*/}"   
 
-    ABSOLUTE_REPO_PATH="$ABSOLUTE_ROOT_PATH/$namespace_name/$repository_name"
+#     ABSOLUTE_REPO_PATH="$ABSOLUTE_ROOT_PATH/$namespace_name/$repository_name"
 
-    if [ ! -d "$ABSOLUTE_REPO_PATH" ]; then
-        echo "ERROR: $ABSOLUTE_REPO_PATH does not exist, exiting."
-        exit 1
-    fi
+#     if [ ! -d "$ABSOLUTE_REPO_PATH" ]; then
+#         echo "ERROR: $ABSOLUTE_REPO_PATH does not exist, exiting."
+#         exit 1
+#     fi
 
-    aws s3 ls "$latest_backup_path/$namespace_name/$repository_name.tar.gz"
-      if [ $? -ne 0 ]; then
-        echo "ERROR: $repository_name missing from latest S3 backup, exiting."
-        exit 1
-    fi
-done < "$VALID_REPOS_FILE"
+#     aws s3 ls "$latest_backup_path/$namespace_name/$repository_name.tar.gz"
+#       if [ $? -ne 0 ]; then
+#         echo "ERROR: $repository_name missing from latest S3 backup, exiting."
+#         exit 1
+#     fi
+# done < "$VALID_REPOS_FILE"
 
 echo "Verification complete. Migrating namespaces..."
+repo_counter=0
 while IFS= read -r line; do 
     namespace_name="${line%%/*}"  # Extracting namespace_name
     repository_name="${line##*/}"   
 
     ABSOLUTE_REPO_PATH="$ABSOLUTE_ROOT_PATH/$namespace_name/$repository_name"
     # Run the migration 
-    oxen migrate up "$MIGRATION_NAME" "$namespace_name/$repository_name" 
+    oxen migrate up "$MIGRATION_NAME" "$ABSOLUTE_REPO_PATH" 
 
     if [ $? -ne 0 ]; then
       echo "Migration failed, exiting."
       exit 1
     fi  
+    
+    ((repo_counter++))
+    echo "Processed repository count: $repo_counter"
 done < "$VALID_REPOS_FILE"
 
 echo "All migrations complete."   

@@ -1,10 +1,30 @@
 #!/bin/bash
-
-ROOT_PATH=$1
-VALID_REPOS_FILE=$2
-MIGRATION_NAME=$3
 TIMESTAMP=$(date "+%Y%m%d-%H%M%S")
 BUCKET_NAME="test-repo-backups"
+
+POSITIONAL_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -b|--bucket)
+      BUCKET_NAME="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -*|--*)
+      echo "Unknown option $1"
+      exit 1
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1") 
+      shift # past argument
+      ;;
+  esac
+done
+
+ROOT_PATH="${POSITIONAL_ARGS[0]}"
+VALID_REPOS_FILE="${POSITIONAL_ARGS[1]}"
+MIGRATION_NAME="${POSITIONAL_ARGS[2]}"
 
 
 if [ -z "$ROOT_PATH" ] || [ -z "$MIGRATION_NAME" ] || [ -z "$VALID_REPOS_FILE" ]; then
@@ -36,23 +56,23 @@ echo "Verifying all namespaces are backed up before migration..."
 
 # First check that all namespaces we're about to migrate exist in the latest s3 backup.
 
-# while IFS= read -r line; do 
-#     namespace_name="${line%%/*}"  # Extracting namespace_name
-#     repository_name="${line##*/}"   
+while IFS= read -r line; do 
+    namespace_name="${line%%/*}"  # Extracting namespace_name
+    repository_name="${line##*/}"   
 
-#     ABSOLUTE_REPO_PATH="$ABSOLUTE_ROOT_PATH/$namespace_name/$repository_name"
+    ABSOLUTE_REPO_PATH="$ABSOLUTE_ROOT_PATH/$namespace_name/$repository_name"
 
-#     if [ ! -d "$ABSOLUTE_REPO_PATH" ]; then
-#         echo "ERROR: $ABSOLUTE_REPO_PATH does not exist, exiting."
-#         exit 1
-#     fi
+    if [ ! -d "$ABSOLUTE_REPO_PATH" ]; then
+        echo "ERROR: $ABSOLUTE_REPO_PATH does not exist, exiting."
+        exit 1
+    fi
 
-#     aws s3 ls "$latest_backup_path/$namespace_name/$repository_name.tar.gz"
-#       if [ $? -ne 0 ]; then
-#         echo "ERROR: $repository_name missing from latest S3 backup, exiting."
-#         exit 1
-#     fi
-# done < "$VALID_REPOS_FILE"
+    aws s3 ls "$latest_backup_path/$namespace_name/$repository_name/.oxen/config.toml"
+      if [ $? -ne 0 ]; then
+        echo "ERROR: $repository_name missing from latest S3 backup, exiting."
+        exit 1
+    fi
+done < "$VALID_REPOS_FILE"
 
 echo "Verification complete. Migrating namespaces..."
 repo_counter=0

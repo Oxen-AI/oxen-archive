@@ -1,10 +1,30 @@
 #!/bin/bash
-
-ROOT_PATH=$1
-VALID_REPOS_FILE=$2
-MIGRATION_NAME=$3
 TIMESTAMP=$(date "+%Y%m%d-%H%M%S")
 BUCKET_NAME="test-repo-backups"
+
+POSITIONAL_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -b|--bucket)
+      BUCKET_NAME="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -*|--*)
+      echo "Unknown option $1"
+      exit 1
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1") 
+      shift # past argument
+      ;;
+  esac
+done
+
+ROOT_PATH="${POSITIONAL_ARGS[0]}"
+VALID_REPOS_FILE="${POSITIONAL_ARGS[1]}"
+MIGRATION_NAME="${POSITIONAL_ARGS[2]}"
 
 
 if [ -z "$ROOT_PATH" ] || [ -z "$MIGRATION_NAME" ] || [ -z "$VALID_REPOS_FILE" ]; then
@@ -47,7 +67,7 @@ while IFS= read -r line; do
         exit 1
     fi
 
-    aws s3 ls "$latest_backup_path/$namespace_name/$repository_name.tar.gz"
+    aws s3 ls "$latest_backup_path/$namespace_name/$repository_name/.oxen/config.toml"
       if [ $? -ne 0 ]; then
         echo "ERROR: $repository_name missing from latest S3 backup, exiting."
         exit 1
@@ -55,18 +75,22 @@ while IFS= read -r line; do
 done < "$VALID_REPOS_FILE"
 
 echo "Verification complete. Migrating namespaces..."
+repo_counter=0
 while IFS= read -r line; do 
     namespace_name="${line%%/*}"  # Extracting namespace_name
     repository_name="${line##*/}"   
 
     ABSOLUTE_REPO_PATH="$ABSOLUTE_ROOT_PATH/$namespace_name/$repository_name"
     # Run the migration 
-    oxen migrate up "$MIGRATION_NAME" "$namespace_name/$repository_name" 
+    oxen migrate up "$MIGRATION_NAME" "$ABSOLUTE_REPO_PATH" 
 
     if [ $? -ne 0 ]; then
       echo "Migration failed, exiting."
       exit 1
     fi  
+    
+    ((repo_counter++))
+    echo "Processed repository count: $repo_counter"
 done < "$VALID_REPOS_FILE"
 
 echo "All migrations complete."   

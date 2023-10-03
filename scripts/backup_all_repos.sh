@@ -1,12 +1,14 @@
 #!/bin/bash
 
 ROOT_PATH=$1
+VALID_REPOS_FILE=$2
 TIMESTAMP=$(date "+%Y%m%d-%H%M%S")
 BUCKET_NAME="test-repo-backups"
 
 
-if [ -z "$ROOT_PATH" ]; then
-  echo "Usage: $0 <root_path> <migration_name>"
+
+if [ -z "$ROOT_PATH" ] || [ -z "$VALID_REPOS_FILE" ]; then
+  echo "Usage: $0 <root_path> <valid_repos_txt_file>"
   exit 1
 fi
 
@@ -21,25 +23,37 @@ fi
 
 
 
-# Backup repositories first exiting if any fail
-for namespace in "$ABSOLUTE_ROOT_PATH"/*; do
+if [ ! -e "$VALID_REPOS_FILE" ]; then
+    echo "$VALID_REPOS_FILE does not exist. Exiting."
+    exit 1
+fi
 
-  if [ -d "$namespace" ]; then
-    namespace_name=$(basename "$namespace")
+while IFS= read -r line; do 
+    namespace_name="${line%%/*}"  # Extracting namespace_name
+    repository_name="${line##*/}"   
 
-    for repository in "$namespace"/*; do
-      if [ -d "$repository" ]; then
-        repository_name=$(basename "$repository")
+    echo "Got namespace $namespace_name and repo $repository_name"
 
-        # Check if the .oxen directory exists in the repository
-        if [ -d "$repository/.oxen" ]; then
+
+
+    ABSOLUTE_REPO_PATH="$ABSOLUTE_ROOT_PATH/$namespace_name/$repository_name"
+
+    if [ ! -d "$ABSOLUTE_REPO_PATH" ]; then
+        echo "ERROR: $ABSOLUTE_REPO_PATH does not exist, exiting."
+        exit 1
+    fi
+
+    echo "Checking path $ABSOLUTE_REPO_PATH/.oxen"
+
+    if [ -d "$ABSOLUTE_REPO_PATH/.oxen" ]; then
+          echo "Backing up $namespace_name/$repository_name"
           S3_DEST_NAME="s3://$BUCKET_NAME/$TIMESTAMP/$namespace_name/$repository_name.tar.gz"
     
           # Save repo as local .tar.gz
-          oxen save "$repository" -o "$repository.tar.gz"
+          oxen save "$ABSOLUTE_REPO_PATH" -o "$repository_name.tar.gz"
 
           # Upload to s3 
-          aws s3 cp "$repository.tar.gz" "$S3_DEST_NAME"
+          aws s3 cp "$repository_name.tar.gz" "$S3_DEST_NAME"
 
           # Check if aws s3 cp was successful
           if [ $? -ne 0 ]; then
@@ -60,17 +74,17 @@ for namespace in "$ABSOLUTE_ROOT_PATH"/*; do
           fi
 
           # Delete the local backup 
-          echo "Attempting to delete $repository.tar.gz"
-          if [ ! -e "$repository.tar.gz" ]; then
-            echo "$repository.tar.gz does not exist. Repo not successfully backed up, exiting."
+          echo "Attempting to delete $repository_name.tar.gz"
+          if [ ! -e "$repository_name.tar.gz" ]; then
+            echo "$repository_name.tar.gz does not exist. Repo not successfully backed up, exiting."
             exit 1
           fi
-          rm -f "$repository.tar.gz"
-        fi
-      fi
-    done
-  fi
-done
+          rm -f "$repository_name.tar.gz"
+    fi
+  done < "$VALID_REPOS_FILE"
+
+
+
 
 
 

@@ -3,7 +3,6 @@
 //! Push data from your local machine to a remote.
 //!
 
-use std::process::Command;
 use crate::api;
 use crate::core::index::{pusher, EntryIndexer};
 use crate::error::OxenError;
@@ -100,7 +99,6 @@ pub async fn push_remote_repo_branch_name(
 mod tests {
     use crate::api;
     use crate::command;
-    use crate::command::push::count_open_fds;
     use crate::constants;
     use crate::error::OxenError;
     use crate::test;
@@ -116,9 +114,6 @@ mod tests {
         // Push the first repo with data
         test::run_training_data_fully_sync_remote(|_, remote_repo_1| async move {
             let remote_repo_1_copy = remote_repo_1.clone();
-
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds before starting two_separate_cloned: {:?}", open_fds);
 
             // Push the second repo with data
             test::run_training_data_fully_sync_remote(|_, remote_repo_2| async move {
@@ -189,8 +184,6 @@ mod tests {
             })
             .await?;
 
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds after finishing that one: {:?}", open_fds);
             Ok(remote_repo_1_copy)
             
         })
@@ -208,8 +201,6 @@ mod tests {
         // Push the Remote Repo
         test::run_training_data_fully_sync_remote(|_, remote_repo| async move {
             let remote_repo_copy = remote_repo.clone();
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds before starting test_cannot_push_when_remote_repo_is_ahead_new_file: {:?}", open_fds);
 
             // Clone Repo to User A
             test::run_empty_dir_test_async(|user_a_repo_dir| async move {
@@ -257,8 +248,6 @@ mod tests {
             })
             .await?;
 
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds after finishing test_cannot_push_when_remote_repo_is_ahead_new_file: {:?}", open_fds);
             Ok(remote_repo_copy)
         })
         .await
@@ -270,8 +259,6 @@ mod tests {
         // Push the Remote Repo
         test::run_training_data_fully_sync_remote(|_, remote_repo| async move {
             let remote_repo_copy = remote_repo.clone();
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds before starting test_cannot_push_when_remote_repo_is_many_commits_ahead_new_file: {:?}", open_fds);
 
             // Clone Repo to User A
             test::run_empty_dir_test_async(|user_a_repo_dir| async move {
@@ -339,8 +326,6 @@ mod tests {
             })
             .await?;
 
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds after finishing test_cannot_push_when_remote_repo_is_many_commits_ahead_new_file: {:?}", open_fds);
 
             Ok(remote_repo_copy)
         })
@@ -350,8 +335,6 @@ mod tests {
     #[tokio::test]
     async fn test_tree_can_push_when_remote_is_many_commits_ahead_no_tree_conflicts(
     ) -> Result<(), OxenError> {
-        let open_fds = count_open_fds()?;
-        log::debug!("open_fds before starting is_many_commits_ahead: {:?}", open_fds);
         // Push the Remote Repo
         test::run_training_data_fully_sync_remote(|_, remote_repo| async move {
             let remote_repo_copy = remote_repo.clone();
@@ -426,9 +409,6 @@ mod tests {
             })
             .await?;
 
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds after finishing is_many_commits_ahead: {:?}", open_fds);
-
             Ok(remote_repo_copy)
         })
         .await
@@ -436,9 +416,6 @@ mod tests {
     #[tokio::test]
     async fn test_tree_cannot_push_when_remote_is_many_commits_ahead_tree_conflicts(
     ) -> Result<(), OxenError> {
-        // Count and print open fds before process 
-        let open_fds = count_open_fds()?;
-        log::debug!("open_fds before starting: {:?}", open_fds);
         // Push the Remote Repo
         test::run_training_data_fully_sync_remote(|_, remote_repo| async move {
             let remote_repo_copy = remote_repo.clone();
@@ -480,14 +457,9 @@ mod tests {
                     command::add(&user_a_repo, &modify_path_a)?;
                     command::commit(&user_a_repo, "Adding first file path.")?;
                      
-                            // Count and print open fds before process 
-                    let open_fds = count_open_fds()?;
-                    log::debug!("open_fds before first push: {:?}", open_fds);
 
                     command::push(&user_a_repo).await?;
 
-                    let open_fds = count_open_fds()?;
-                    log::debug!("open_fds after first push: {:?}", open_fds);
 
                     // User B adds a different file and pushe
                     test::write_txt_file_to_path(&modify_path_b, "newer file")?;
@@ -498,9 +470,6 @@ mod tests {
                     let res = command::push(&user_b_repo).await;
                     assert!(res.is_err());
 
-                    let open_fds = count_open_fds()?;
-                    log::debug!("open_fds after failed push: {:?}", open_fds);
-
 
                     Ok(user_b_repo_dir_copy)
                 })
@@ -509,10 +478,6 @@ mod tests {
                 Ok(user_a_repo_dir_copy)
             })
             .await?;
-
-
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds at the end of it all: {:?}", open_fds);
 
             Ok(remote_repo_copy)
         })
@@ -524,9 +489,6 @@ mod tests {
         // Push the Remote Repo
         test::run_training_data_fully_sync_remote(|_, remote_repo| async move {
             let remote_repo_copy = remote_repo.clone();
-
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds before starting test_push_tree_no_conflict_added_file: {:?}", open_fds);
 
             // Clone Repo to User A
             test::run_empty_dir_test_async(|user_a_repo_dir| async move {
@@ -579,8 +541,6 @@ mod tests {
             })
             .await?;
 
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds before starting test_push_tree_no_conflict_added_file: {:?}", open_fds);
             Ok(remote_repo_copy)
         })
         .await
@@ -591,9 +551,6 @@ mod tests {
         // Push the Remote Repo
         test::run_training_data_fully_sync_remote(|_, remote_repo| async move {
             let remote_repo_copy = remote_repo.clone();
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds before starting test_push_tree_conflict_deleted_file: {:?}", open_fds);
-
             // Clone Repo to User A
             test::run_empty_dir_test_async(|user_a_repo_dir| async move {
                 let user_a_repo_dir_copy = user_a_repo_dir.clone();
@@ -652,8 +609,6 @@ mod tests {
             })
             .await?;
 
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds before starting test_push_tree_conflict_deleted_file: {:?}", open_fds);
             Ok(remote_repo_copy)
         })
         .await
@@ -661,9 +616,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_tree_can_push_tree_no_conflict_deleted_file() -> Result<(), OxenError> {
-        // open fds 
-        let open_fds = count_open_fds()?;
-        log::debug!("open_fds before starting tree_no_conflict_deleted_file: {:?}", open_fds);
         // Push the Remote Repo
         test::run_training_data_fully_sync_remote(|_, remote_repo| async move {
             let remote_repo_copy = remote_repo.clone();
@@ -721,9 +673,6 @@ mod tests {
                 Ok(user_a_repo_dir_copy)
             })
             .await?;
-
-            let open_fds = count_open_fds()?;
-            log::debug!("open_fds after finishing tree_no_conflict_deleted_file: {:?}", open_fds);
             Ok(remote_repo_copy)
             
         })

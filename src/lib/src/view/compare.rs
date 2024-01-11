@@ -67,6 +67,7 @@ pub struct CompareTabularResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CompareTabular {
+    pub compare_type: String,
     pub source: HashMap<String, CompareSourceDF>,
     pub derived: HashMap<String, CompareDerivedDF>,
     pub dupes: CompareDupes,
@@ -143,7 +144,7 @@ impl CompareDerivedDF {
         compare_id: Option<&str>,
         left_commit_id: &str,
         right_commit_id: &str,
-        df: DataFrame,
+        df: &DataFrame,
         schema: Schema,
     ) -> CompareDerivedDF {
         let resource = compare_id.map(|compare_id| CompareVirtualResource {

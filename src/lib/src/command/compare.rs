@@ -25,7 +25,6 @@ pub fn compare(
             )
         })?;
 
-    let _compare: crate::view::compare::CompareTabular =
-        api::local::compare::compare_files(repo, None, entry_1, entry_2, keys, targets, output)?;
+    api::local::compare::compare_files(repo, None, entry_1, entry_2, keys, targets, output)?;
     Ok(())
 }

@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct CommitPath {
-    pub commit: Commit,
+    pub is_from_working_directory: bool,
+    pub commit: Option<Commit>,
     pub path: PathBuf,
 }
 

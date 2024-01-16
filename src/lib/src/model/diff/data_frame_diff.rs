@@ -42,15 +42,21 @@ impl fmt::Display for DataFrameDiff {
         }
 
         if let Some(rows) = &self.removed_rows {
-            results.push(format!("Removed Rows\n\n{rows}\n\n"));
+            if rows.height() > 0 && rows.width() > 0 {
+                results.push(format!("Removed Rows\n\n{rows}\n\n"));
+            }
         }
 
         if let Some(cols) = &self.added_cols {
-            results.push(format!("Added Columns\n\n{cols}\n\n"));
+            if cols.height() > 0 && cols.width() > 0 {
+                results.push(format!("Added Columns\n\n{cols}\n\n"));
+            }
         }
 
         if let Some(cols) = &self.removed_cols {
-            results.push(format!("Removed Columns\n\n{cols}\n\n"));
+            if cols.height() > 0 && cols.width() > 0 {
+                results.push(format!("Removed Columns\n\n{cols}\n\n"));
+            }
         }
         write!(f, "{}", results.join("\n"))
     }

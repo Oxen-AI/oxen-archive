@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use polars::frame::DataFrame;
 use serde::{Deserialize, Serialize};
 
+use crate::api::local::resource;
 use crate::message::{MessageLevel, OxenMessage};
 use crate::model::{Commit, CommitEntry, DataFrameSize, DiffEntry, Schema};
 use crate::view::Pagination;
@@ -142,20 +143,25 @@ impl CompareDerivedDF {
     pub fn from_compare_info(
         name: &str,
         compare_id: Option<&str>,
-        left_commit_id: &str,
-        right_commit_id: &str,
+        left_commit: &Option<Commit>,
+        right_commit: &Option<Commit>,
         df: &DataFrame,
         schema: Schema,
     ) -> CompareDerivedDF {
-        let resource = compare_id.map(|compare_id| CompareVirtualResource {
-            path: format!(
-                "/compare/data_frame/{}/{}/{}..{}",
-                compare_id, name, left_commit_id, right_commit_id
-            ),
-            base: left_commit_id.to_owned(),
-            head: right_commit_id.to_owned(),
-            resource: format!("{}/{}", compare_id, name),
-        });
+        let resource = match (compare_id, left_commit, right_commit) {
+            (Some(compare_id), Some(left_commit), Some(right_commit)) => {
+                Some(CompareVirtualResource {
+                    path: format!(
+                        "/compare/data_frame/{}/{}/{}..{}",
+                        compare_id, name, left_commit.id, right_commit.id
+                    ),
+                    base: left_commit.id.to_owned(),
+                    head: right_commit.id.to_owned(),
+                    resource: format!("{}/{}", compare_id, name),
+                })
+            }
+            _ => None,
+        };
 
         CompareDerivedDF {
             name: name.to_owned(),

@@ -2,9 +2,10 @@ use crate::api;
 use crate::constants;
 use crate::core::df::tabular;
 use crate::error::OxenError;
-use crate::model::{CommitEntry, DataFrameDiff, Schema};
+use crate::model::{DataFrameDiff, Schema};
 use crate::opts::DFOpts;
 
+use crate::api::local::compare::CompareItemData;
 use polars::prelude::DataFrame;
 use polars::prelude::IntoLazy;
 use std::collections::HashMap;
@@ -14,33 +15,34 @@ use crate::view::compare::{CompareDerivedDF, CompareTabular};
 const ADDED_ROWS: &str = "added_rows";
 const REMOVED_ROWS: &str = "removed_rows";
 
-pub fn compare_files_by_hash(
-    entry_1: CommitEntry,
-    entry_2: CommitEntry,
-    df_1: DataFrame,
-    df_2: DataFrame,
-    schema_1: Schema,
+pub fn compare(
+    left_item: CompareItemData,
+    right_item: CompareItemData,
 ) -> Result<CompareTabular, OxenError> {
-    let compare = compute_new_rows(&df_1, &df_2, &schema_1)?;
+    let schema = left_item.schema.clone();
+    let df_1 = left_item.df.clone();
+    let df_2 = right_item.df.clone();
+
+    let compare = compute_new_rows(&df_1, &df_2, &schema)?;
     let result = compare.to_string();
     println!("{result}");
 
     let derived_added_rows = CompareDerivedDF::from_compare_info(
         ADDED_ROWS,
         None,
-        &entry_2.commit_id,
-        &entry_1.commit_id,
+        &left_item.commit_path.commit,
+        &right_item.commit_path.commit,
         &compare.added_rows.unwrap(),
-        schema_1.clone(),
+        schema.clone(),
     );
 
     let derived_removed_rows = CompareDerivedDF::from_compare_info(
         REMOVED_ROWS,
         None,
-        &entry_2.commit_id,
-        &entry_1.commit_id,
+        &left_item.commit_path.commit,
+        &right_item.commit_path.commit,
         &compare.removed_rows.unwrap(),
-        schema_1.clone(),
+        schema.clone(),
     );
 
     let derived_dfs: HashMap<String, CompareDerivedDF> = HashMap::from([
@@ -51,8 +53,8 @@ pub fn compare_files_by_hash(
     api::local::compare::build_compare_tabular(
         &df_1,
         &df_2,
-        &entry_1,
-        &entry_2,
+        &left_item,
+        &right_item,
         derived_dfs,
         String::from("hash"),
     )
@@ -72,7 +74,7 @@ fn compute_new_rows(
         let head_df = tabular::transform(head_df.clone(), opts)?;
         Some(tabular::take(head_df.lazy(), added_indices)?)
     } else {
-        None
+        Some(DataFrame::default())
     };
     log::debug!("diff_current added_rows {:?}", added_rows);
 
@@ -82,7 +84,7 @@ fn compute_new_rows(
         let base_df = tabular::transform(base_df.clone(), opts)?;
         Some(tabular::take(base_df.lazy(), removed_indices)?)
     } else {
-        None
+        Some(DataFrame::default())
     };
     log::debug!("diff_current removed_rows {:?}", removed_rows);
 

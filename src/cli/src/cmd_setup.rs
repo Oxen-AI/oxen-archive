@@ -811,7 +811,7 @@ pub fn compare() -> Command {
             .index(1)
         )
         .arg(Arg::new("RESOURCE2")
-            .required(true)
+            .required(false)
             .help("Second resource, in format `file` or `file:revision`")
             .index(2))
         .arg(Arg::new("keys")

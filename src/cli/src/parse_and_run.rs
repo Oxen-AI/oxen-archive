@@ -950,15 +950,18 @@ pub async fn compare(sub_matches: &ArgMatches) {
     let resource1 = sub_matches
         .get_one::<String>("RESOURCE1")
         .expect("required");
-    let resource2 = sub_matches
-        .get_one::<String>("RESOURCE2")
-        .expect("required");
+    let resource2 = sub_matches.get_one::<String>("RESOURCE2");
 
     let (file1, revision1) = parse_file_and_revision(resource1);
-    let (file2, revision2) = parse_file_and_revision(resource2);
-
     let file1 = PathBuf::from(file1);
-    let file2 = PathBuf::from(file2);
+
+    let (file2, revision2) = match resource2 {
+        Some(resource) => {
+            let (file, revision) = parse_file_and_revision(resource);
+            (Some(PathBuf::from(file)), revision)
+        }
+        None => (None, None),
+    };
 
     let keys: Vec<String> = match sub_matches.get_many::<String>("keys") {
         Some(values) => values.cloned().collect(),

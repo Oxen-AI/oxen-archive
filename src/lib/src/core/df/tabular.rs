@@ -701,25 +701,30 @@ pub fn any_val_to_bytes(value: &AnyValue) -> Vec<u8> {
 }
 
 pub fn df_hash_rows(df: DataFrame, keys: Option<Vec<&str>>) -> Result<DataFrame, OxenError> {
+    log::debug!("df_hash_rows, keys: {:?}", keys);
+    log::debug!("{:?}", df);
+
     let num_rows = df.height() as i64;
 
     let mut col_names = vec![];
     let schema = df.schema();
+    log::debug!("Schema: {:?}", schema);
 
-    match keys {
-        Some(keys) => {
-            for key in keys {
-                col_names.push(col(key));
-            }
-        }
-        None => {
-            for field in schema.iter_fields() {
-                col_names.push(col(field.name()));
-            }
+    // Take the keys if they exist
+    if let Some(keys) = keys {
+        for key in keys {
+            col_names.push(col(key));
         }
     }
-    // println!("Hashing: {:?}", col_names);
-    // println!("{:?}", df);
+
+    // If keys don't exist, hash all columns
+    if col_names.is_empty() {
+        for field in schema.iter_fields() {
+            col_names.push(col(field.name()));
+        }
+    }
+
+    log::debug!("Hashing columns: {:?}", col_names);
 
     let df = df
         .lazy()

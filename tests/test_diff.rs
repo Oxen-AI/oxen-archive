@@ -1,134 +1,179 @@
-// use std::path::Path;
+use std::path::Path;
+use std::path::PathBuf;
 
-// use liboxen::api;
-// use liboxen::command;
-// use liboxen::error::OxenError;
-// use liboxen::model::ContentType;
-// use liboxen::opts::DFOpts;
-// use liboxen::test;
-// use liboxen::util;
+use liboxen::api;
+use liboxen::api::local::compare::CompareStrategy;
+use liboxen::command;
+use liboxen::error::OxenError;
+use liboxen::model::entry::commit_entry::CommitPath;
+use liboxen::model::ContentType;
+use liboxen::opts::DFOpts;
+use liboxen::test;
+use liboxen::util;
 
 // Test diff during a merge conflict should show conflicts for a dataframe
-// #[tokio::test]
-// async fn test_has_diff_merge_conflicts() -> Result<(), OxenError> {
-//     test::run_empty_local_repo_test_async(|repo| async move {
-//         let og_branch = api::local::branches::current_branch(&repo)?.unwrap();
-//         let data_path = repo.path.join("data.csv");
-//         util::fs::write_to_path(&data_path, "file,label\nimages/0.png,dog\n")?;
-//         command::add(&repo, &data_path)?;
-//         command::commit(&repo, "Add initial data.csv file with dog")?;
+#[tokio::test]
+async fn test_has_diff_merge_conflicts() -> Result<(), OxenError> {
+    test::run_empty_local_repo_test_async(|repo| async move {
+        let og_branch = api::local::branches::current_branch(&repo)?.unwrap();
+        let data_path = repo.path.join("data.csv");
+        util::fs::write_to_path(&data_path, "file,label\nimages/0.png,dog\n")?;
+        command::add(&repo, &data_path)?;
+        command::commit(&repo, "Add initial data.csv file with dog")?;
 
-//         // Add a fish label to the file on a branch
-//         let fish_branch_name = "add-fish-label";
-//         api::local::branches::create_checkout(&repo, fish_branch_name)?;
-//         let data_path = test::append_line_txt_file(data_path, "images/fish.png,fish\n")?;
-//         command::add(&repo, &data_path)?;
-//         command::commit(&repo, "Adding fish to data.csv file")?;
+        // Add a fish label to the file on a branch
+        let fish_branch_name = "add-fish-label";
+        api::local::branches::create_checkout(&repo, fish_branch_name)?;
+        let data_path = test::append_line_txt_file(data_path, "images/fish.png,fish\n")?;
+        command::add(&repo, &data_path)?;
+        command::commit(&repo, "Adding fish to data.csv file")?;
 
-//         // Checkout main, and branch from it to another branch to add a cat label
-//         command::checkout(&repo, &og_branch.name).await?;
-//         let cat_branch_name = "add-cat-label";
-//         api::local::branches::create_checkout(&repo, cat_branch_name)?;
-//         let data_path = test::append_line_txt_file(data_path, "images/cat.png,cat\n")?;
-//         command::add(&repo, &data_path)?;
-//         command::commit(&repo, "Adding cat to data.csv file")?;
+        // Checkout main, and branch from it to another branch to add a cat label
+        command::checkout(&repo, &og_branch.name).await?;
+        let cat_branch_name = "add-cat-label";
+        api::local::branches::create_checkout(&repo, cat_branch_name)?;
+        let data_path = test::append_line_txt_file(data_path, "images/cat.png,cat\n")?;
+        command::add(&repo, &data_path)?;
+        command::commit(&repo, "Adding cat to data.csv file")?;
 
-//         // Checkout main again
-//         command::checkout(&repo, &og_branch.name).await?;
+        // Checkout main again
+        command::checkout(&repo, &og_branch.name).await?;
 
-//         // Merge the fish branch in
-//         let result = command::merge(&repo, fish_branch_name)?;
-//         assert!(result.is_some());
+        // Merge the fish branch in
+        let result = command::merge(&repo, fish_branch_name)?;
+        assert!(result.is_some());
 
-//         // And then the cat branch should have conflicts
-//         let result = command::merge(&repo, cat_branch_name)?;
-//         assert!(result.is_none());
+        // And then the cat branch should have conflicts
+        let result = command::merge(&repo, cat_branch_name)?;
+        assert!(result.is_none());
 
-//         // Make sure we can access the conflicts in the status command
-//         let status = command::status(&repo)?;
-//         assert_eq!(status.merge_conflicts.len(), 1);
+        // Make sure we can access the conflicts in the status command
+        let status = command::status(&repo)?;
+        assert_eq!(status.merge_conflicts.len(), 1);
 
-//         // Get the diff dataframe
-//         let diff = command::diff(&repo, None, &data_path)?;
-//         log::debug!("{diff:?}");
+        let head_commit = Some(api::local::commits::head_commit(&repo)?);
 
-//         assert_eq!(
-//             diff,
-//             r"Added Rows
+        let cpath_1 = CommitPath {
+            commit: head_commit.clone(),
+            path: PathBuf::from("data.csv"),
+        };
 
-// shape: (1, 2)
-// ┌────────────────┬───────┐
-// │ file           ┆ label │
-// │ ---            ┆ ---   │
-// │ str            ┆ str   │
-// ╞════════════════╪═══════╡
-// │ images/cat.png ┆ cat   │
-// └────────────────┴───────┘
+        let cpath_2 = CommitPath {
+            commit: head_commit.clone(),
+            path: PathBuf::from("data.csv"),
+        };
 
-// Removed Rows
+        // Get the diff dataframe
+        let diff = command::compare(
+            CompareStrategy::Hash,
+            &repo,
+            cpath_1,
+            cpath_2,
+            vec![],
+            vec![],
+            None,
+        )?;
+        log::debug!("{diff:?}");
+        println!("{diff:?}");
 
-// shape: (1, 2)
-// ┌─────────────────┬───────┐
-// │ file            ┆ label │
-// │ ---             ┆ ---   │
-// │ str             ┆ str   │
-// ╞═════════════════╪═══════╡
-// │ images/fish.png ┆ fish  │
-// └─────────────────┴───────┘
+        assert_eq!(
+            diff,
+            r"Added Rows
 
-// "
-//         );
+shape: (1, 2)
+┌─────────────────┬───────┐
+│ file            ┆ label │
+│ ---             ┆ ---   │
+│ str             ┆ str   │
+╞═════════════════╪═══════╡
+│ images/fish.png ┆ fish  │
+└─────────────────┴───────┘
 
-//         Ok(())
-//     })
-//     .await
-// }
 
-// #[test]
-// fn test_diff_tabular_add_col() -> Result<(), OxenError> {
-//     test::run_training_data_repo_test_fully_committed(|repo| {
-//         let bbox_filename = Path::new("annotations")
-//             .join("train")
-//             .join("bounding_box.csv");
-//         let bbox_file = repo.path.join(bbox_filename);
+Removed Rows
 
-//         let mut opts = DFOpts::empty();
-//         // Add Column
-//         opts.add_col = Some(String::from("is_cute:unknown:str"));
-//         // Save to Output
-//         opts.output = Some(bbox_file.clone());
-//         // Perform df transform
-//         command::df(&bbox_file, opts)?;
+shape: (1, 2)
+┌────────────────┬───────┐
+│ file           ┆ label │
+│ ---            ┆ ---   │
+│ str            ┆ str   │
+╞════════════════╪═══════╡
+│ images/cat.png ┆ cat   │
+└────────────────┴───────┘
 
-//         let diff = command::diff(&repo, None, &bbox_file);
-//         println!("{:?}", diff);
+"
+        );
 
-//         assert!(diff.is_ok());
-//         let diff = diff.unwrap();
-//         assert_eq!(
-//             diff,
-//             r"Added Columns
+        Ok(())
+    })
+    .await
+}
 
-// shape: (6, 1)
-// ┌─────────┐
-// │ is_cute │
-// │ ---     │
-// │ str     │
-// ╞═════════╡
-// │ unknown │
-// │ unknown │
-// │ unknown │
-// │ unknown │
-// │ unknown │
-// │ unknown │
-// └─────────┘
+#[test]
+fn test_diff_tabular_add_col() -> Result<(), OxenError> {
+    test::run_training_data_repo_test_fully_committed(|repo| {
+        let bbox_filename = Path::new("annotations")
+            .join("train")
+            .join("bounding_box.csv");
+        let bbox_file = repo.path.join(bbox_filename.clone());
 
-// "
-//         );
+        let mut opts = DFOpts::empty();
+        // Add Column
+        opts.add_col = Some(String::from("is_cute:unknown:str"));
+        // Save to Output
+        opts.output = Some(bbox_file.clone());
+        // Perform df transform
+        command::df(&bbox_file, opts)?;
 
-//         Ok(())
-//     })
-// }
+        let head_commit = Some(api::local::commits::head_commit(&repo)?);
+
+        let cpath_1 = CommitPath {
+            commit: None,
+            path: bbox_file.clone(),
+        };
+
+        let cpath_2 = CommitPath {
+            commit: head_commit.clone(),
+            path: bbox_filename.clone(),
+        };
+
+        // Get the diff dataframe
+        let diff = command::compare(
+            CompareStrategy::Hash,
+            &repo,
+            cpath_1,
+            cpath_2,
+            vec![],
+            vec![],
+            None,
+        )?;
+
+        println!("{:?}", diff);
+
+        assert_eq!(
+            diff,
+            r"Added Columns
+
+shape: (6, 1)
+┌─────────┐
+│ is_cute │
+│ ---     │
+│ str     │
+╞═════════╡
+│ unknown │
+│ unknown │
+│ unknown │
+│ unknown │
+│ unknown │
+│ unknown │
+└─────────┘
+
+"
+        );
+
+        Ok(())
+    })
+}
 
 // #[test]
 // fn test_diff_tabular_add_row() -> Result<(), OxenError> {

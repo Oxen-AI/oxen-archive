@@ -1,5 +1,6 @@
 use crate::api;
 use crate::api::local::compare::CompareStrategy;
+use crate::core::index::MergeConflictReader;
 use crate::error::OxenError;
 use crate::model::entry::commit_entry::{CommitPath, CompareEntry};
 use crate::model::LocalRepository;
@@ -36,7 +37,14 @@ pub fn compare(
         compare_entry_1.commit_entry = Some(entry_1);
     };
 
-    if let Some(commit_2) = cpath_2.commit {
+    if let Some(mut commit_2) = cpath_2.commit {
+        // if there are merge conflicts, compare against the conflict commit instead
+        let merger = MergeConflictReader::new(repo)?;
+
+        if merger.has_conflicts()? {
+            commit_2 = merger.get_conflict_commit()?.unwrap();
+        }
+
         let entry_2 = api::local::entries::get_commit_entry(repo, &commit_2, &cpath_2.path)?
             .ok_or_else(|| {
                 OxenError::ResourceNotFound(

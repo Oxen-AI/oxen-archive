@@ -175,98 +175,138 @@ shape: (6, 1)
     })
 }
 
-// #[test]
-// fn test_diff_tabular_add_row() -> Result<(), OxenError> {
-//     test::run_training_data_repo_test_fully_committed(|repo| {
-//         let bbox_filename = Path::new("annotations")
-//             .join("train")
-//             .join("bounding_box.csv");
-//         let bbox_file = repo.path.join(bbox_filename);
+#[test]
+fn test_diff_tabular_add_row() -> Result<(), OxenError> {
+    test::run_training_data_repo_test_fully_committed(|repo| {
+        let bbox_filename = Path::new("annotations")
+            .join("train")
+            .join("bounding_box.csv");
+        let bbox_file = repo.path.join(bbox_filename.clone());
 
-//         let mut opts = DFOpts::empty();
-//         // Add Row
-//         opts.add_row = Some(String::from("train/cat_100.jpg,cat,100.0,100.0,100,100"));
-//         opts.content_type = ContentType::Csv;
-//         // Save to Output
-//         opts.output = Some(bbox_file.clone());
-//         // Perform df transform
-//         command::df(&bbox_file, opts)?;
+        let mut opts = DFOpts::empty();
+        // Add Row
+        opts.add_row = Some(String::from("train/cat_100.jpg,cat,100.0,100.0,100,100"));
+        opts.content_type = ContentType::Csv;
+        // Save to Output
+        opts.output = Some(bbox_file.clone());
+        // Perform df transform
+        command::df(&bbox_file, opts)?;
 
-//         match command::diff(&repo, None, &bbox_file) {
-//             Ok(diff) => {
-//                 println!("{diff}");
+        let head_commit = Some(api::local::commits::head_commit(&repo)?);
 
-//                 assert_eq!(
-//                     diff,
-//                     r"Added Rows
+        let cpath_1 = CommitPath {
+            commit: None,
+            path: bbox_file.clone(),
+        };
 
-// shape: (1, 6)
-// ┌───────────────────┬───────┬───────┬───────┬───────┬────────┐
-// │ file              ┆ label ┆ min_x ┆ min_y ┆ width ┆ height │
-// │ ---               ┆ ---   ┆ ---   ┆ ---   ┆ ---   ┆ ---    │
-// │ str               ┆ str   ┆ f64   ┆ f64   ┆ i64   ┆ i64    │
-// ╞═══════════════════╪═══════╪═══════╪═══════╪═══════╪════════╡
-// │ train/cat_100.jpg ┆ cat   ┆ 100.0 ┆ 100.0 ┆ 100   ┆ 100    │
-// └───────────────────┴───────┴───────┴───────┴───────┴────────┘
+        let cpath_2 = CommitPath {
+            commit: head_commit.clone(),
+            path: bbox_filename.clone(),
+        };
 
-// "
-//                 );
-//             }
-//             Err(err) => {
-//                 panic!("Error diffing: {}", err);
-//             }
-//         }
+        match command::compare(
+            CompareStrategy::Hash,
+            &repo,
+            cpath_1,
+            cpath_2,
+            vec![],
+            vec![],
+            None,
+        ) {
+            Ok(diff) => {
+                println!("{diff}");
 
-//         Ok(())
-//     })
-// }
+                assert_eq!(
+                    diff,
+                    r"Added Rows
 
-// #[test]
-// fn test_diff_tabular_remove_row() -> Result<(), OxenError> {
-//     test::run_training_data_repo_test_fully_committed(|repo| {
-//         let bbox_filename = Path::new("annotations")
-//             .join("train")
-//             .join("bounding_box.csv");
-//         let bbox_file = repo.path.join(bbox_filename);
+shape: (1, 6)
+┌───────────────────┬───────┬───────┬───────┬───────┬────────┐
+│ file              ┆ label ┆ min_x ┆ min_y ┆ width ┆ height │
+│ ---               ┆ ---   ┆ ---   ┆ ---   ┆ ---   ┆ ---    │
+│ str               ┆ str   ┆ f64   ┆ f64   ┆ i64   ┆ i64    │
+╞═══════════════════╪═══════╪═══════╪═══════╪═══════╪════════╡
+│ train/cat_100.jpg ┆ cat   ┆ 100.0 ┆ 100.0 ┆ 100   ┆ 100    │
+└───────────────────┴───────┴───────┴───────┴───────┴────────┘
 
-//         // Remove a row
-//         let bbox_file = test::modify_txt_file(
-//             bbox_file,
-//             r"
-// file,label,min_x,min_y,width,height
-// train/dog_1.jpg,dog,101.5,32.0,385,330
-// train/dog_2.jpg,dog,7.0,29.5,246,247
-// train/cat_2.jpg,cat,30.5,44.0,333,396
-// ",
-//         )?;
+"
+                );
+            }
+            Err(err) => {
+                panic!("Error diffing: {}", err);
+            }
+        }
 
-//         match command::diff(&repo, None, bbox_file) {
-//             Ok(diff) => {
-//                 println!("{diff}");
+        Ok(())
+    })
+}
 
-//                 assert_eq!(
-//                     diff,
-//                     r"Removed Rows
+#[test]
+fn test_diff_tabular_remove_row() -> Result<(), OxenError> {
+    test::run_training_data_repo_test_fully_committed(|repo| {
+        let bbox_filename = Path::new("annotations")
+            .join("train")
+            .join("bounding_box.csv");
+        let bbox_file = repo.path.join(bbox_filename.clone());
 
-// shape: (3, 6)
-// ┌─────────────────┬───────┬───────┬───────┬───────┬────────┐
-// │ file            ┆ label ┆ min_x ┆ min_y ┆ width ┆ height │
-// │ ---             ┆ ---   ┆ ---   ┆ ---   ┆ ---   ┆ ---    │
-// │ str             ┆ str   ┆ f64   ┆ f64   ┆ i64   ┆ i64    │
-// ╞═════════════════╪═══════╪═══════╪═══════╪═══════╪════════╡
-// │ train/dog_1.jpg ┆ dog   ┆ 102.5 ┆ 31.0  ┆ 386   ┆ 330    │
-// │ train/dog_3.jpg ┆ dog   ┆ 19.0  ┆ 63.5  ┆ 376   ┆ 421    │
-// │ train/cat_1.jpg ┆ cat   ┆ 57.0  ┆ 35.5  ┆ 304   ┆ 427    │
-// └─────────────────┴───────┴───────┴───────┴───────┴────────┘
+        // Remove a row
+        let bbox_file = test::modify_txt_file(
+            bbox_file,
+            r"
+file,label,min_x,min_y,width,height
+train/dog_1.jpg,dog,101.5,32.0,385,330
+train/dog_2.jpg,dog,7.0,29.5,246,247
+train/cat_2.jpg,cat,30.5,44.0,333,396
+",
+        )?;
 
-// "
-//                 );
-//             }
-//             Err(err) => {
-//                 panic!("Error diffing: {}", err);
-//             }
-//         }
+        let head_commit = Some(api::local::commits::head_commit(&repo)?);
 
-//         Ok(())
-//     })
-// }
+        let cpath_1 = CommitPath {
+            commit: None,
+            path: bbox_file.clone(),
+        };
+
+        let cpath_2 = CommitPath {
+            commit: head_commit.clone(),
+            path: bbox_filename.clone(),
+        };
+
+        match command::compare(
+            CompareStrategy::Hash,
+            &repo,
+            cpath_1,
+            cpath_2,
+            vec![],
+            vec![],
+            None,
+        ) {
+            Ok(diff) => {
+                println!("{diff}");
+
+                assert_eq!(
+                    diff,
+                    r"Removed Rows
+
+shape: (3, 6)
+┌─────────────────┬───────┬───────┬───────┬───────┬────────┐
+│ file            ┆ label ┆ min_x ┆ min_y ┆ width ┆ height │
+│ ---             ┆ ---   ┆ ---   ┆ ---   ┆ ---   ┆ ---    │
+│ str             ┆ str   ┆ f64   ┆ f64   ┆ i64   ┆ i64    │
+╞═════════════════╪═══════╪═══════╪═══════╪═══════╪════════╡
+│ train/dog_1.jpg ┆ dog   ┆ 102.5 ┆ 31.0  ┆ 386   ┆ 330    │
+│ train/dog_3.jpg ┆ dog   ┆ 19.0  ┆ 63.5  ┆ 376   ┆ 421    │
+│ train/cat_1.jpg ┆ cat   ┆ 57.0  ┆ 35.5  ┆ 304   ┆ 427    │
+└─────────────────┴───────┴───────┴───────┴───────┴────────┘
+
+"
+                );
+            }
+            Err(err) => {
+                panic!("Error diffing: {}", err);
+            }
+        }
+
+        Ok(())
+    })
+}

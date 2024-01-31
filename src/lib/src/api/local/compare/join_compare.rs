@@ -1,4 +1,5 @@
 use crate::error::OxenError;
+use crate::view::compare::{CompareDupes, CompareTabularRaw};
 
 use polars::prelude::ChunkCompare;
 use polars::prelude::{DataFrame, DataFrameJoinOps};
@@ -11,7 +12,7 @@ pub fn compare(
     df_2: &DataFrame,
     targets: Vec<&str>,
     keys: Vec<&str>,
-) -> Result<(DataFrame, DataFrame, DataFrame, DataFrame), OxenError> {
+) -> Result<CompareTabularRaw, OxenError> {
     let joined_df = join_hashed_dfs(df_1, df_2, targets.clone())?;
 
     let diff_df = calculate_diff_df(&joined_df, targets.clone(), keys.clone())?;
@@ -19,7 +20,16 @@ pub fn compare(
     let left_only_df = calculate_left_df(&joined_df, targets.clone(), keys.clone())?;
     let right_only_df = calculate_right_df(&joined_df, targets.clone(), keys.clone())?;
 
-    Ok((diff_df, match_df, left_only_df, right_only_df))
+    Ok(CompareTabularRaw {
+        added_cols_df: DataFrame::default(),
+        removed_cols_df: DataFrame::default(),
+        diff_df,
+        match_df,
+        left_only_df,
+        right_only_df,
+        dupes: CompareDupes { left: 0, right: 0 },
+        compare_strategy: super::CompareStrategy::Join,
+    })
 }
 
 fn join_hashed_dfs(

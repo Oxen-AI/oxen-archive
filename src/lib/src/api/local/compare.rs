@@ -115,7 +115,7 @@ fn compare_tabular(
         compare_id,
     );
 
-    maybe_save_compare_output(&strategy, &mut compare_tabular_raw, output)?;
+    maybe_save_compare_output(&mut compare_tabular_raw, output)?;
     maybe_write_cache(
         repo,
         compare_id,
@@ -124,8 +124,7 @@ fn compare_tabular(
         &mut compare_tabular_raw,
     )?;
 
-    let compare_string = compare_to_string(&strategy, &compare_tabular_raw);
-    Ok((compare, compare_string))
+    Ok((compare, compare_to_string(&compare_tabular_raw)))
 }
 
 pub fn get_cached_compare(
@@ -321,10 +320,7 @@ fn read_dupes(repo: &LocalRepository, compare_id: &str) -> Result<CompareDupes, 
 fn write_compare_dfs(
     repo: &LocalRepository,
     compare_id: &str,
-    left_only: &mut DataFrame,
-    right_only: &mut DataFrame,
-    match_df: &mut DataFrame,
-    diff_df: &mut DataFrame,
+    compare_tabular_raw: &mut CompareTabularRaw,
 ) -> Result<(), OxenError> {
     let compare_dir = get_compare_dir(repo, compare_id);
 
@@ -332,19 +328,24 @@ fn write_compare_dfs(
         std::fs::create_dir_all(&compare_dir)?;
     }
 
+    let mut left_only = compare_tabular_raw.left_only_df.clone();
+    let mut right_only = compare_tabular_raw.right_only_df.clone();
+    let mut match_df = compare_tabular_raw.match_df.clone();
+    let mut diff_df = compare_tabular_raw.diff_df.clone();
+
     let match_path = get_compare_match_path(repo, compare_id);
     let diff_path = get_compare_diff_path(repo, compare_id);
     let left_path = get_compare_left_path(repo, compare_id);
     let right_path = get_compare_right_path(repo, compare_id);
 
     log::debug!("writing {:?} rows to {:?}", match_df.height(), match_path);
-    tabular::write_df(match_df, &match_path)?;
+    tabular::write_df(&mut match_df, &match_path)?;
     log::debug!("writing {:?} rows to {:?}", diff_df.height(), diff_path);
-    tabular::write_df(diff_df, &diff_path)?;
+    tabular::write_df(&mut diff_df, &diff_path)?;
     log::debug!("writing {:?} rows to {:?}", left_only.height(), left_path);
-    tabular::write_df(left_only, &left_path)?;
+    tabular::write_df(&mut left_only, &left_path)?;
     log::debug!("writing {:?} rows to {:?}", right_only.height(), right_path);
-    tabular::write_df(right_only, &right_path)?;
+    tabular::write_df(&mut right_only, &right_path)?;
 
     Ok(())
 }
@@ -410,40 +411,25 @@ fn compute_row_comparison(
 ) -> Result<CompareTabularRaw, OxenError> {
     let schema_1 = Schema::from_polars(&df_1.schema());
     let schema_2 = Schema::from_polars(&df_2.schema());
-    let mut dupes = CompareDupes { left: 0, right: 0 };
+    let targets = targets.to_owned();
+    let keys = keys.to_owned();
 
-    let dataframes = match strategy {
-        CompareStrategy::Hash => {
-            hash_compare::compare(df_1, df_2, &schema_1, &schema_2, keys.to_owned())?
-        }
+    match strategy {
+        CompareStrategy::Hash => hash_compare::compare(df_1, df_2, &schema_1, &schema_2, keys),
         CompareStrategy::Join => {
             // TODO: unsure if hash comparison or join is faster here - would guess join, could use some testing
-            let (df_1, df_2) = hash_dfs(
-                df_1.clone(),
-                df_2.clone(),
-                keys.to_owned(),
-                targets.to_owned(),
-            )?;
-            dupes = CompareDupes {
+            let (df_1, df_2) = hash_dfs(df_1.clone(), df_2.clone(), keys.clone(), targets.clone())?;
+
+            let mut compare = join_compare::compare(&df_1, &df_2, targets, keys)?;
+
+            compare.dupes = CompareDupes {
                 left: tabular::n_duped_rows(&df_1, &[KEYS_HASH_COL])?,
                 right: tabular::n_duped_rows(&df_2, &[KEYS_HASH_COL])?,
             };
 
-            join_compare::compare(&df_1, &df_2, targets.to_owned(), keys.to_owned())?
+            Ok(compare)
         }
-    };
-
-    let (diff_df, match_df, left_only_df, right_only_df) = dataframes;
-
-    let compare_tabular_raw = CompareTabularRaw {
-        diff_df,
-        match_df,
-        left_only_df,
-        right_only_df,
-        dupes,
-    };
-
-    Ok(compare_tabular_raw)
+    }
 }
 
 fn hash_dfs(
@@ -492,8 +478,8 @@ fn build_compare_tabular(
 ) -> CompareTabular {
     let left_only_df = &compare_tabular_raw.left_only_df;
     let right_only_df = &compare_tabular_raw.right_only_df;
-    let diff_df = &compare_tabular_raw.diff_df;
-    let match_df = &compare_tabular_raw.match_df;
+    let diff_df = &compare_tabular_raw.diff_df.clone();
+    let match_df = &compare_tabular_raw.match_df.clone();
 
     let diff_schema = Schema::from_polars(&diff_df.schema());
     let match_schema = Schema::from_polars(&match_df.schema());
@@ -622,38 +608,45 @@ fn maybe_write_cache(
             &compare_entry_1.commit_entry,
             &compare_entry_2.commit_entry,
         )?;
-        write_compare_dfs(
-            repo,
-            compare_id,
-            &mut compare_tabular_raw.left_only_df,
-            &mut compare_tabular_raw.right_only_df,
-            &mut compare_tabular_raw.match_df,
-            &mut compare_tabular_raw.diff_df,
-        )?;
+        write_compare_dfs(repo, compare_id, compare_tabular_raw)?;
         maybe_write_dupes(repo, compare_id, &compare_tabular_raw.dupes)?;
     }
 
     Ok(())
 }
 
-fn compare_to_string(
-    strategy: &CompareStrategy,
-    compare_tabular_raw: &CompareTabularRaw,
-) -> String {
+fn compare_to_string(compare_tabular_raw: &CompareTabularRaw) -> String {
     let left_only_df = &compare_tabular_raw.left_only_df;
     let right_only_df = &compare_tabular_raw.right_only_df;
-    let diff_df = &compare_tabular_raw.diff_df;
-    let match_df = &compare_tabular_raw.match_df;
 
     let mut results: Vec<String> = vec![];
 
-    match strategy {
+    match compare_tabular_raw.compare_strategy {
         CompareStrategy::Hash => {
-            results.push(format!("Added Rows\n\n{left_only_df}\n\n"));
-            results.push(format!("Removed Rows\n\n{right_only_df}\n\n"));
+            let added_cols_df = compare_tabular_raw.added_cols_df.clone();
+            let removed_cols_df = compare_tabular_raw.removed_cols_df.clone();
+
+            if !added_cols_df.is_empty() {
+                results.push(format!("Added Columns\n\n{added_cols_df}\n\n"));
+            }
+
+            if !removed_cols_df.is_empty() {
+                results.push(format!("Removed Columns\n\n{removed_cols_df}\n\n"));
+            }
+
+            if !left_only_df.is_empty() {
+                results.push(format!("Added Rows\n\n{left_only_df}\n\n"));
+            }
+
+            if !right_only_df.is_empty() {
+                results.push(format!("Removed Rows\n\n{right_only_df}\n\n"));
+            }
         }
 
         CompareStrategy::Join => {
+            let diff_df = &compare_tabular_raw.diff_df;
+            let match_df = &compare_tabular_raw.match_df;
+
             results.push(format!(
                 "Rows with matching keys and DIFFERENT targets\n\n{diff_df}\n\n"
             ));
@@ -673,10 +666,10 @@ fn compare_to_string(
 }
 
 fn maybe_save_compare_output(
-    strategy: &CompareStrategy,
     compare_tabular_raw: &mut CompareTabularRaw,
     output: Option<PathBuf>,
 ) -> Result<(), OxenError> {
+    let strategy = &compare_tabular_raw.compare_strategy;
     let left_only_df = &mut compare_tabular_raw.left_only_df;
     let right_only_df = &mut compare_tabular_raw.right_only_df;
     let diff_df = &mut compare_tabular_raw.diff_df;

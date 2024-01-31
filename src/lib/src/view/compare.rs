@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use polars::frame::DataFrame;
 use serde::{Deserialize, Serialize};
 
+use crate::api::local::compare::CompareStrategy;
 use crate::message::{MessageLevel, OxenMessage};
 use crate::model::{Commit, CommitEntry, DataFrameSize, DiffEntry, Schema};
 use crate::view::Pagination;
@@ -79,11 +80,14 @@ pub enum CompareResult {
 }
 
 pub struct CompareTabularRaw {
+    pub added_cols_df: DataFrame,
+    pub removed_cols_df: DataFrame,
     pub diff_df: DataFrame,
     pub match_df: DataFrame,
     pub left_only_df: DataFrame,
     pub right_only_df: DataFrame,
     pub dupes: CompareDupes,
+    pub compare_strategy: CompareStrategy,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

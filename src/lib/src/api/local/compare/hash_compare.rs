@@ -1,8 +1,11 @@
 use crate::constants;
 use crate::core::df::tabular;
 use crate::error::OxenError;
+use crate::model::schema::Field;
 use crate::model::Schema;
 use crate::opts::DFOpts;
+use crate::view::compare::CompareDupes;
+use crate::view::compare::CompareTabularRaw;
 
 use polars::prelude::DataFrame;
 use polars::prelude::IntoLazy;
@@ -14,40 +17,76 @@ pub fn compare(
     schema_1: &Schema,
     schema_2: &Schema,
     keys: Vec<&str>,
-) -> Result<(DataFrame, DataFrame, DataFrame, DataFrame), OxenError> {
-    if schema_1.hash != schema_2.hash {
-        return Err(OxenError::invalid_file_type(
-            "The schemas are incompatible. Specify keys and targets to compare the files",
-        ));
+) -> Result<CompareTabularRaw, OxenError> {
+    let added_fields = schema_1.added_fields(schema_2);
+    let removed_fields = schema_1.removed_fields(schema_2);
+
+    if !added_fields.is_empty() || !removed_fields.is_empty() {
+        let result = get_new_and_removed_cols(head_df, base_df, added_fields, removed_fields);
+
+        match result {
+            Ok((added_cols, removed_cols)) => Ok(CompareTabularRaw {
+                added_cols_df: added_cols,
+                removed_cols_df: removed_cols,
+                diff_df: DataFrame::default(),
+                match_df: DataFrame::default(),
+                left_only_df: DataFrame::default(),
+                right_only_df: DataFrame::default(),
+                dupes: CompareDupes { left: 0, right: 0 },
+                compare_strategy: super::CompareStrategy::Hash,
+            }),
+            Err(err) => Err(err),
+        }
+    } else {
+        // Compute row indices
+        let (added_indices, removed_indices) = compute_new_row_indices(base_df, head_df, keys)?;
+
+        // Take added from the current df
+        let added_rows = if !added_indices.is_empty() {
+            let opts = DFOpts::from_schema_columns(schema_1);
+            let head_df = tabular::transform(head_df.clone(), opts)?;
+            tabular::take(head_df.lazy(), added_indices)?
+        } else {
+            DataFrame::default()
+        };
+
+        // Take removed from versioned df
+        let removed_rows = if !removed_indices.is_empty() {
+            let opts = DFOpts::from_schema_columns(schema_1);
+            let base_df = tabular::transform(base_df.clone(), opts)?;
+            tabular::take(base_df.lazy(), removed_indices.clone())?
+        } else {
+            DataFrame::default()
+        };
+
+        Ok(CompareTabularRaw {
+            added_cols_df: DataFrame::default(),
+            removed_cols_df: DataFrame::default(),
+            diff_df: DataFrame::default(),
+            match_df: DataFrame::default(),
+            left_only_df: removed_rows,
+            right_only_df: added_rows,
+            dupes: CompareDupes { left: 0, right: 0 },
+            compare_strategy: super::CompareStrategy::Hash,
+        })
     }
+}
 
-    // Compute row indices
-    let (added_indices, removed_indices) = compute_new_row_indices(base_df, head_df, keys)?;
+fn get_new_and_removed_cols(
+    base_df: &DataFrame,
+    head_df: &DataFrame,
+    added_fields: Vec<Field>,
+    removed_fields: Vec<Field>,
+) -> Result<(DataFrame, DataFrame), OxenError> {
+    let str_fields: Vec<String> = added_fields.iter().map(|f| f.name.to_owned()).collect();
+    let added_cols = head_df.select(str_fields)?;
+    log::debug!("Got added col df: {}", added_cols);
 
-    // Take added from the current df
-    let added_rows = if !added_indices.is_empty() {
-        let opts = DFOpts::from_schema_columns(schema_1);
-        let head_df = tabular::transform(head_df.clone(), opts)?;
-        tabular::take(head_df.lazy(), added_indices)?
-    } else {
-        DataFrame::default()
-    };
+    let str_fields: Vec<String> = removed_fields.iter().map(|f| f.name.to_owned()).collect();
+    let removed_cols = base_df.select(str_fields)?;
+    log::debug!("Got removed col df: {}", removed_cols);
 
-    // Take removed from versioned df
-    let removed_rows = if !removed_indices.is_empty() {
-        let opts = DFOpts::from_schema_columns(schema_1);
-        let base_df = tabular::transform(base_df.clone(), opts)?;
-        tabular::take(base_df.lazy(), removed_indices.clone())?
-    } else {
-        DataFrame::default()
-    };
-
-    Ok((
-        DataFrame::default(),
-        DataFrame::default(),
-        removed_rows,
-        added_rows,
-    ))
+    Ok((added_cols, removed_cols))
 }
 
 fn compute_new_row_indices(

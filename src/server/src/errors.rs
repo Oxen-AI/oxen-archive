@@ -5,7 +5,7 @@ use liboxen::view::http::{MSG_UPDATE_REQUIRED, STATUS_ERROR};
 use liboxen::view::{SQLParseError, StatusMessage, StatusMessageDescription};
 use serde_json::json;
 use std::io;
-use std::string::{FromUtf16Error, FromUtf8Error};
+use std::string::FromUtf8Error;
 
 #[derive(Debug, Display, Error)]
 pub enum OxenHttpError {
@@ -62,7 +62,6 @@ impl From<FromUtf8Error> for OxenHttpError {
         OxenHttpError::BadRequest(StringError::new(error.to_string()))
     }
 }
-
 
 impl error::ResponseError for OxenHttpError {
     fn error_response(&self) -> HttpResponse {

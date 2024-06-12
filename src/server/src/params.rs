@@ -21,6 +21,9 @@ pub use page_num_query::PageNumQuery;
 pub mod df_opts_query;
 pub use df_opts_query::DFOptsQuery;
 
+pub mod data_frame_opts_query;
+pub use data_frame_opts_query::GetDataFrameOptsQuery;
+
 pub fn app_data(req: &HttpRequest) -> Result<&OxenAppData, OxenHttpError> {
     log::debug!(
         "Get user agent from app data (app_data) {:?}",

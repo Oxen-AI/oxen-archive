@@ -1,7 +1,8 @@
 use crate::errors::OxenHttpError;
 use crate::helpers::get_repo;
 use crate::params::{
-    app_data, df_opts_query, parse_resource, path_param, DFOptsQuery, PageNumQuery,
+    app_data, df_opts_query, parse_resource, path_param, DFOptsQuery, GetDataFrameOptsQuery,
+    PageNumQuery,
 };
 
 use actix_files::NamedFile;
@@ -41,6 +42,55 @@ use futures_util::TryStreamExt as _;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+
+pub async fn get_dataframes(
+    req: HttpRequest,
+    query: web::Query<GetDataFrameOptsQuery>,
+) -> actix_web::Result<HttpResponse, OxenHttpError> {
+    let app_data = app_data(&req).unwrap();
+
+    let namespace = path_param(&req, "namespace")?;
+    let repo_name = path_param(&req, "repo_name")?;
+    let identifier = path_param(&req, "identifier")?;
+    let repo = get_repo(&app_data.path, namespace, repo_name)?;
+    let page = query.page.unwrap_or(constants::DEFAULT_PAGE_NUM);
+    let page_size = query.page_size.unwrap_or(constants::DEFAULT_PAGE_SIZE);
+    let branch_name: &str = req.match_info().query("branch");
+    let editable = query.editable.unwrap_or(false);
+
+    // Staged dataframes must be on a branch.
+    let branch = api::local::branches::get_by_name(&repo, branch_name)?
+        .ok_or(OxenError::remote_branch_not_found(branch_name))?;
+
+    let commit = api::local::commits::get_by_id(&repo, &branch.commit_id)?
+        .ok_or(OxenError::resource_not_found(&branch.commit_id))?;
+
+    let _branch_repo = index::remote_dir_stager::init_or_get(&repo, &branch, &identifier)?;
+
+    let all_entries = api::local::entries::list_tabular_files_in_repo(&repo, &commit)?;
+
+    let entries = if editable {
+        all_entries
+            .into_iter()
+            .filter(|entry| {
+                // Print the entry and its is_queryable attribute for debugging
+                println!("Entry: {:?}, is_queryable: {:?}", entry, entry.is_queryable);
+                entry.is_queryable.unwrap_or(false)
+            })
+            .collect::<Vec<_>>()
+    } else {
+        all_entries
+    };
+
+    let (paginated_entries, pagination) = paginate(entries, page, page_size);
+    Ok(HttpResponse::Ok().json(PaginatedMetadataEntriesResponse {
+        status: StatusMessage::resource_found(),
+        entries: PaginatedMetadataEntries {
+            entries: paginated_entries,
+            pagination,
+        },
+    }))
+}
 
 pub async fn status_dir(
     req: HttpRequest,

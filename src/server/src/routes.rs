@@ -196,6 +196,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                             web::get().to(controllers::stager::status_dir),
                         )
                         .route(
+                            "/data_frame/{branch:.*}",
+                            web::get().to(controllers::stager::get_dataframes),
+                        )
+                        .route(
                             "/df/list_editable/{branch:.*}",
                             web::get().to(controllers::stager::list_editable_dfs),
                         )

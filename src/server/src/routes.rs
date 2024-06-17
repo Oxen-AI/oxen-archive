@@ -35,7 +35,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                         .route("", web::post().to(controllers::commits::create))
                         .route("/bulk", web::post().to(controllers::commits::create_bulk))
                         .route("/root", web::get().to(controllers::commits::root_commit))
-                        .route("/resource/{resource:.*}", web::get().to(controllers::commits::get_for_file))
+                        .route(
+                            "/resource/{resource:.*}",
+                            web::get().to(controllers::commits::get_for_file),
+                        )
                         .route(
                             "/complete",
                             web::post().to(controllers::commits::complete_bulk),

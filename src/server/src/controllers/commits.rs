@@ -1613,7 +1613,9 @@ mod tests {
             namespace, repo_name, "main/hello.txt"
         );
 
-        let first_req = actix_web::test::TestRequest::get().uri(&first_uri).to_request();
+        let first_req = actix_web::test::TestRequest::get()
+            .uri(&first_uri)
+            .to_request();
 
         // Call the service for the first request
         let first_resp = actix_web::test::call_service(&app, first_req).await;
@@ -1635,7 +1637,9 @@ mod tests {
             namespace, repo_name, "main/hello_2.txt"
         );
 
-        let second_req = actix_web::test::TestRequest::get().uri(&second_uri).to_request();
+        let second_req = actix_web::test::TestRequest::get()
+            .uri(&second_uri)
+            .to_request();
 
         // Call the service for the second request
         let second_resp = actix_web::test::call_service(&app, second_req).await;
@@ -1654,5 +1658,4 @@ mod tests {
 
         Ok(())
     }
-
 }

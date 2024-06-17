@@ -11,9 +11,11 @@ use liboxen::constants::VERSION_FILE_NAME;
 use liboxen::core::cache::cacher_status::CacherStatusType;
 use liboxen::core::cache::cachers::content_validator;
 use liboxen::core::cache::commit_cacher;
+use liboxen::core::index::CommitDirEntryReader;
 use liboxen::core::index::CommitReader;
 use liboxen::core::index::CommitWriter;
 
+use liboxen::core::index::ObjectDBReader;
 use liboxen::core::index::RefWriter;
 use liboxen::error::OxenError;
 use liboxen::model::commit::CommitWithBranchName;
@@ -36,7 +38,7 @@ use crate::app_data::OxenAppData;
 use crate::errors::OxenHttpError;
 use crate::helpers::get_repo;
 use crate::params::PageNumQuery;
-use crate::params::{app_data, path_param};
+use crate::params::{app_data, parse_resource, path_param};
 use crate::tasks;
 use crate::tasks::post_push_complete::PostPushComplete;
 
@@ -74,6 +76,53 @@ pub async fn index(req: HttpRequest) -> actix_web::Result<HttpResponse, OxenHttp
 
     let commits = api::local::commits::list(&repo).unwrap_or_default();
     Ok(HttpResponse::Ok().json(ListCommitResponse::success(commits)))
+}
+
+pub async fn get_for_file(req: HttpRequest) -> actix_web::Result<HttpResponse, OxenHttpError> {
+    let app_data = app_data(&req)?;
+    let namespace = path_param(&req, "namespace")?;
+    let repo_name = path_param(&req, "repo_name")?;
+    let repo = get_repo(&app_data.path, &namespace, &repo_name)?;
+    let resource = parse_resource(&req, &repo)?;
+    let commit = resource.clone().commit.ok_or(OxenHttpError::NotFound)?;
+
+    let commit_reader = CommitReader::new(&repo)?;
+    let mut commits = commit_reader.list_all()?;
+    commits.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+
+    let path = resource.path.clone(); // Assuming the path is part of the resource
+    let parent = path.parent().ok_or(OxenError::file_has_no_parent(&path))?;
+    let base_name = path.file_name().ok_or(OxenError::file_has_no_name(&path))?;
+    let object_reader = ObjectDBReader::new(&repo)?;
+
+    let dir_entry_reader =
+        CommitDirEntryReader::new(&repo, &commit.id, parent, object_reader.clone())?;
+
+    // Load all commit entry readers once
+    let mut commit_entry_readers: Vec<(Commit, CommitDirEntryReader)> = Vec::new();
+
+    for c in commits {
+        let reader = CommitDirEntryReader::new(&repo, &c.id, parent, object_reader.clone())?;
+        commit_entry_readers.push((c.clone(), reader));
+    }
+
+    let entry = dir_entry_reader
+        .get_entry(base_name)?
+        .ok_or(OxenError::entry_does_not_exist_in_commit(&path, &commit.id))?;
+
+    let latest_commit =
+        match api::local::entries::get_latest_commit_for_entry(&commit_entry_readers, &entry)? {
+            Some(commit) => commit,
+            None => {
+                log::error!("No latest commit for entry: {:?}", entry.path);
+                return Err(OxenHttpError::NotFound);
+            }
+        };
+
+    Ok(HttpResponse::Ok().json(CommitResponse {
+        status: StatusMessage::resource_found(),
+        commit: latest_commit,
+    }))
 }
 
 // List history for a branch or commit
@@ -1524,4 +1573,86 @@ mod tests {
 
         Ok(())
     }
+
+    #[actix_web::test]
+    async fn test_get_for_file() -> Result<(), OxenError> {
+        // Initialize the test environment and test data
+        init_test_env();
+        let sync_dir = test::get_sync_dir()?;
+        let queue = test::init_queue();
+        let namespace = "Testing-Namespace";
+        let repo_name = "Testing-Name";
+        let repo = test::create_local_repo(&sync_dir, namespace, repo_name)?;
+
+        // Create the first commit
+        let hello_file = repo.path.join("hello.txt");
+        util::fs::write_to_path(&hello_file, "Hello")?;
+        command::add(&repo, &hello_file)?;
+        let first_commit = command::commit(&repo, "First commit")?;
+
+        // Create the second commit
+        let hello_file_2 = repo.path.join("hello_2.txt");
+        util::fs::write_to_path(&hello_file_2, "Hello")?;
+        command::add(&repo, &hello_file_2)?;
+        let second_commit = command::commit(&repo, "Second commit")?;
+
+        // Initialize the test service
+        let app = actix_web::test::init_service(
+            App::new()
+                .app_data(OxenAppData::new(sync_dir.clone(), queue.clone()))
+                .route(
+                    "/oxen/{namespace}/{repo_name}/commits/resource/{resource:.*}",
+                    actix_web::web::get().to(controllers::commits::get_for_file),
+                ),
+        )
+        .await;
+
+        // Prepare the first request
+        let first_uri = format!(
+            "/oxen/{}/{}/commits/resource/{}",
+            namespace, repo_name, "main/hello.txt"
+        );
+
+        let first_req = actix_web::test::TestRequest::get().uri(&first_uri).to_request();
+
+        // Call the service for the first request
+        let first_resp = actix_web::test::call_service(&app, first_req).await;
+        let first_status = first_resp.status();
+        let first_body = to_bytes(first_resp.into_body()).await.unwrap();
+        let first_text = std::str::from_utf8(&first_body).unwrap();
+
+        // Check the first response
+        assert_eq!(first_status, 200, "Unexpected status: {}", first_text);
+        let first_response: CommitResponse = serde_json::from_str(first_text)?;
+        assert_eq!(
+            first_response.commit.id, first_commit.id,
+            "First commit ID should be present"
+        );
+
+        // Prepare the second request
+        let second_uri = format!(
+            "/oxen/{}/{}/commits/resource/{}",
+            namespace, repo_name, "main/hello_2.txt"
+        );
+
+        let second_req = actix_web::test::TestRequest::get().uri(&second_uri).to_request();
+
+        // Call the service for the second request
+        let second_resp = actix_web::test::call_service(&app, second_req).await;
+        let second_body = to_bytes(second_resp.into_body()).await.unwrap();
+        let second_text = std::str::from_utf8(&second_body).unwrap();
+
+        // Check the second response
+        let second_response: CommitResponse = serde_json::from_str(second_text)?;
+        assert_eq!(
+            second_response.commit.id, second_commit.id,
+            "Second commit ID should be present"
+        );
+
+        // Cleanup
+        util::fs::remove_dir_all(sync_dir)?;
+
+        Ok(())
+    }
+
 }

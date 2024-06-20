@@ -42,9 +42,7 @@ pub async fn poll_queue(mut queue: TaskQueue) {
                             }
                         }
                     }
-                })
-                .await
-                .expect("Task execution failed");
+                });
             }
             None => {
                 // log::debug!("No queue items found, sleeping");

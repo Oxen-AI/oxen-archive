@@ -220,6 +220,8 @@ pub fn get_commit_history_for_entry(
         }
     }
 
+    history.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
     Ok(history)
 }
 

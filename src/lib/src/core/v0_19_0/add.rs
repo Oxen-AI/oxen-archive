@@ -78,10 +78,6 @@ pub fn add(repo: &LocalRepository, path: impl AsRef<Path>) -> Result<(), OxenErr
     Ok(())
 }
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 176fc40e (First build with reworked oxen rm)
 fn add_files(
     repo: &LocalRepository,
     paths: &HashSet<PathBuf>,
@@ -89,11 +85,8 @@ fn add_files(
     // To start, let's see how fast we can simply loop through all the paths
     // and and copy them into an index.
 
-<<<<<<< HEAD
-=======
     println!("Add files");
 
->>>>>>> 176fc40e (First build with reworked oxen rm)
     // Create the versions dir if it doesn't exist
     let versions_path = util::fs::oxen_hidden_dir(&repo.path).join(VERSIONS_DIR);
     if !versions_path.exists() {
@@ -135,18 +128,12 @@ fn add_files(
     Ok(total)
 }
 
-<<<<<<< HEAD
-fn process_dir(
-=======
 pub fn add_dir(    
->>>>>>> 176fc40e (First build with reworked oxen rm)
     repo: &LocalRepository,
     maybe_head_commit: &Option<Commit>,
     path: PathBuf,
 ) -> Result<CumulativeStats, OxenError> {
 
-<<<<<<< HEAD
-=======
     let versions_path = util::fs::oxen_hidden_dir(&repo.path)
         .join(VERSIONS_DIR)
         .join(FILES_DIR);
@@ -167,7 +154,6 @@ fn process_add_dir(
 ) -> Result<CumulativeStats, OxenError> {
     let start = std::time::Instant::now();
 
->>>>>>> 176fc40e (First build with reworked oxen rm)
     let progress_1 = Arc::new(ProgressBar::new_spinner());
     progress_1.set_style(ProgressStyle::default_spinner());
     progress_1.enable_steady_tick(Duration::from_millis(100));
@@ -176,16 +162,6 @@ fn process_add_dir(
     let repo = repo.clone();
     let maybe_head_commit = maybe_head_commit.clone();
     let repo_path = repo.path.clone();
-<<<<<<< HEAD
-    let versions_path = util::fs::oxen_hidden_dir(&repo.path)
-        .join(VERSIONS_DIR)
-        .join(FILES_DIR);
-    let opts = db::key_val::opts::default();
-    let db_path = util::fs::oxen_hidden_dir(&repo.path).join(STAGED_DIR);
-    let staged_db: DBWithThreadMode<MultiThreaded> =
-        DBWithThreadMode::open(&opts, dunce::simplified(&db_path))?;
-=======
->>>>>>> 176fc40e (First build with reworked oxen rm)
 
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
@@ -302,12 +278,8 @@ fn get_file_node(
     }
 }
 
-<<<<<<< HEAD
-fn add_file(
-=======
 
 pub fn add_file(
->>>>>>> 176fc40e (First build with reworked oxen rm)
     repo: &LocalRepository,
     maybe_head_commit: &Option<Commit>,
     path: &Path,
@@ -340,10 +312,7 @@ pub fn add_file(
     )
 }
 
-<<<<<<< HEAD
-=======
 // Need to ensure this function never gets called with a non-existant path unless that path has intentionally been removed
->>>>>>> 176fc40e (First build with reworked oxen rm)
 fn process_add_file(
     repo_path: &Path,
     versions_path: &Path,
@@ -354,9 +323,6 @@ fn process_add_file(
 ) -> Result<Option<StagedMerkleTreeNode>, OxenError> {
     let relative_path = util::fs::path_relative_to_dir(path, repo_path)?;
     let full_path = repo_path.join(&relative_path);
-<<<<<<< HEAD
-    if !full_path.is_file() {
-=======
 
     println!("Check if file");
     if !full_path.is_file() {
@@ -398,7 +364,6 @@ fn process_add_file(
             return Ok(Some(entry));
         }
 
->>>>>>> 176fc40e (First build with reworked oxen rm)
         // If it's not a file - no need to add it
         // We handle directories by traversing the parents of files below
         return Ok(Some(StagedMerkleTreeNode {
@@ -411,38 +376,6 @@ fn process_add_file(
         let file_path = relative_path.file_name().unwrap();
         let maybe_file_node = get_file_node(maybe_dir_node, file_path)?;
 
-<<<<<<< HEAD
-    // This is ugly - but makes sure we don't have to rehash the file if it hasn't changed
-    let (status, hash, num_bytes, mtime) = if let Some(file_node) = maybe_file_node {
-        // first check if the file timestamp is different
-        let metadata = std::fs::metadata(path)?;
-        let mtime = FileTime::from_last_modification_time(&metadata);
-        log::debug!("path: {:?}", path);
-        log::debug!(
-            "file_node.last_modified_seconds: {}",
-            file_node.last_modified_seconds
-        );
-        log::debug!(
-            "file_node.last_modified_nanoseconds: {}",
-            file_node.last_modified_nanoseconds
-        );
-        log::debug!("mtime.unix_seconds(): {}", mtime.unix_seconds());
-        log::debug!("mtime.nanoseconds(): {}", mtime.nanoseconds());
-        log::debug!(
-            "has_different_modification_time: {}",
-            has_different_modification_time(&file_node, &mtime)
-        );
-        log::debug!("-----------------------------------");
-        if has_different_modification_time(&file_node, &mtime) {
-            let hash = util::hasher::get_hash_given_metadata(&full_path, &metadata)?;
-            if file_node.hash.to_u128() != hash {
-                (
-                    StagedEntryStatus::Modified,
-                    MerkleHash::new(hash),
-                    file_node.num_bytes,
-                    mtime,
-                )
-=======
 
         // This is ugly - but makes sure we don't have to rehash the file if it hasn't changed
         let (status, hash, num_bytes, mtime) = if let Some(file_node) = maybe_file_node {
@@ -482,7 +415,6 @@ fn process_add_file(
                         mtime,
                     )
                 }
->>>>>>> 176fc40e (First build with reworked oxen rm)
             } else {
                 (
                     StagedEntryStatus::Unmodified,
@@ -509,53 +441,6 @@ fn process_add_file(
             return Ok(None);
         }
 
-<<<<<<< HEAD
-    // Don't have to add the file to the staged db if it hasn't changed
-    if status == StagedEntryStatus::Unmodified {
-        return Ok(None);
-    }
-
-    // Get the data type of the file
-    let mime_type = util::fs::file_mime_type(path);
-    let data_type = util::fs::datatype_from_mimetype(path, &mime_type);
-    let metadata = repositories::metadata::get_file_metadata(&full_path, &data_type)?;
-
-    // Add the file to the versions db
-    // Take first 2 chars of hash as dir prefix and last N chars as the dir suffix
-    let dir_prefix_len = 2;
-    let dir_name = hash.to_string();
-    let dir_prefix = dir_name.chars().take(dir_prefix_len).collect::<String>();
-    let dir_suffix = dir_name.chars().skip(dir_prefix_len).collect::<String>();
-    let dst_dir = versions_path.join(dir_prefix).join(dir_suffix);
-
-    if !dst_dir.exists() {
-        util::fs::create_dir_all(&dst_dir).unwrap();
-    }
-
-    let dst = dst_dir.join("data");
-    util::fs::copy(&full_path, &dst).unwrap();
-
-    let file_extension = relative_path
-        .extension()
-        .unwrap_or_default()
-        .to_string_lossy();
-    let relative_path_str = relative_path.to_str().unwrap();
-    let entry = StagedMerkleTreeNode {
-        status,
-        node: MerkleTreeNode::from_file(FileNode {
-            hash,
-            name: relative_path_str.to_string(),
-            data_type,
-            num_bytes,
-            last_modified_seconds: mtime.unix_seconds(),
-            last_modified_nanoseconds: mtime.nanoseconds(),
-            metadata,
-            extension: file_extension.to_string(),
-            mime_type: mime_type.clone(),
-            ..Default::default()
-        }),
-    };
-=======
 
         // Get the data type of the file
         let mime_type = util::fs::file_mime_type(path);
@@ -603,7 +488,6 @@ fn process_add_file(
         };
 
 
->>>>>>> 176fc40e (First build with reworked oxen rm)
     log::debug!("writing file to staged db: {}", entry);
 
     let mut buf = Vec::new();

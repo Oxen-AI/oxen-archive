@@ -8,6 +8,7 @@ pub struct BranchResponse {
     #[serde(flatten)]
     pub status: StatusMessage,
     pub branch: Branch,
+    pub is_locked: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

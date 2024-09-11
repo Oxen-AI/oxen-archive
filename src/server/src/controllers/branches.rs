@@ -42,9 +42,12 @@ pub async fn show(req: HttpRequest) -> actix_web::Result<HttpResponse, OxenHttpE
     let branch = api::local::branches::get_by_name(&repository, &branch_name)?
         .ok_or(OxenError::remote_branch_not_found(&branch_name))?;
 
+    let is_locked = api::local::branches::is_locked(&repository, &branch_name)?;
+
     let view = BranchResponse {
         status: StatusMessage::resource_created(),
         branch,
+        is_locked: Some(is_locked),
     };
 
     Ok(HttpResponse::Ok().json(view))
@@ -67,6 +70,7 @@ pub async fn create_from_or_get(
         let view = BranchResponse {
             status: StatusMessage::resource_found(),
             branch,
+            is_locked: None,
         };
         return Ok(HttpResponse::Ok().json(view));
     }
@@ -79,6 +83,7 @@ pub async fn create_from_or_get(
     Ok(HttpResponse::Ok().json(BranchResponse {
         status: StatusMessage::resource_created(),
         branch: new_branch,
+        is_locked: None,
     }))
 }
 
@@ -96,6 +101,7 @@ pub async fn delete(req: HttpRequest) -> actix_web::Result<HttpResponse, OxenHtt
     Ok(HttpResponse::Ok().json(BranchResponse {
         status: StatusMessage::resource_deleted(),
         branch,
+        is_locked: None,
     }))
 }
 
@@ -117,6 +123,7 @@ pub async fn update(
     Ok(HttpResponse::Ok().json(BranchResponse {
         status: StatusMessage::resource_updated(),
         branch,
+        is_locked: None,
     }))
 }
 pub async fn maybe_create_merge(

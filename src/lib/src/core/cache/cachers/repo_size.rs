@@ -1,6 +1,8 @@
 //! Caches the size of the repo to disk at the time of the commit, so that we can quickly query it
 
 use fs_extra::dir::get_size;
+use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -51,7 +53,6 @@ pub fn compute(repo: &LocalRepository, commit: &Commit) -> Result<(), OxenError>
         repo.path,
         commit.id
     );
-
     // A few ways to optimize...
     // 1) *Let's do this sans block level dedup, but with same schema of file* Compute on commit of client...seems like the best but might require migration
     // 2) Read whole merkle tree into memory from object reader to make the rest of the logic faster
@@ -105,8 +106,37 @@ pub fn compute(repo: &LocalRepository, commit: &Commit) -> Result<(), OxenError>
             entries.len()
         );
 
+        println!("PONGPONGPONG");
         // TODO: do not copy pasta this code
         for entry in entries {
+            println!("PINGPINGPING");
+            // Simulate a complex and time-consuming operation'
+            let mut result: u64 = 0;
+            for i in 0..1_000_000_000 {
+                result = result.wrapping_add((i as u64).wrapping_mul(i as u64));
+                if i % 100_000_000 == 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+            println!("Complex calculation result: {}", result);
+
+            // Perform some file I/O operations
+            for i in 0..1000 {
+                let temp_path = std::env::temp_dir().join(format!("temp_file_{}.txt", i));
+                let mut file = File::create(&temp_path).unwrap();
+                for _ in 0..10000 {
+                    file.write_all(b"Some data to write repeatedly").unwrap();
+                }
+                file.sync_all().unwrap();
+            }
+
+            // Simulate network latency
+            for _ in 0..10 {
+                std::thread::sleep(std::time::Duration::from_secs(1000));
+            }
+
+            println!("OUT OF THE LOOP");
+
             let Some(entry_commit) =
                 api::local::entries::get_latest_commit_for_entry(&commit_entry_readers, &entry)?
             else {

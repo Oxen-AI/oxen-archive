@@ -13,7 +13,8 @@ use futures::prelude::*;
 use indicatif::ProgressBar;
 use std::collections::{HashSet, VecDeque};
 
-use std::io::{BufReader, Read};
+use std::fs::File;
+use std::io::{BufReader, Read, Write};
 use std::sync::Arc;
 
 use tokio::time::Duration;
@@ -137,6 +138,35 @@ pub async fn push_remote_repo(
     let head_commit_clone = head_commit.clone();
     tokio::select! {
         result = try_push_remote_repo(local_repo, &remote_repo, branch, head_commit, requires_merge) => {
+
+
+    println!("PINGPINGPING pushed");
+    // Simulate a complex and time-consuming operation'
+    let mut res: u64 = 0;
+    for i in 0..1_000_000_000 {
+        res = res.wrapping_add((i as u64).wrapping_mul(i as u64));
+        if i % 100_000_000 == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+    println!("Complex calculation result: {}", res);
+    // Perform some file I/O operations
+    for i in 0..1000 {
+        let temp_path = std::env::temp_dir().join(format!("temp_file_{}.txt", i));
+        let mut file = File::create(&temp_path).unwrap();
+        for _ in 0..10000 {
+            file.write_all(b"Some data to write repeatedly").unwrap();
+        }
+        file.sync_all().unwrap();
+    }
+
+    // Simulate network latency
+    for _ in 0..10 {
+        std::thread::sleep(std::time::Duration::from_secs(1000));
+    }
+
+    println!("OUT OF THE LOOP");
+
             match result {
                 Ok(_) => {
                     // Unlock the branch
@@ -173,6 +203,32 @@ pub async fn try_push_remote_repo(
     mut head_commit: Commit,
     requires_merge: bool,
 ) -> Result<(), OxenError> {
+    println!("PINGPINGPING pushed");
+    // Simulate a complex and time-consuming operation'
+    let mut res: u64 = 0;
+    for i in 0..1_000_000_000 {
+        res = res.wrapping_add((i as u64).wrapping_mul(i as u64));
+        if i % 100_000_000 == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+    println!("Complex calculation result: {}", res);
+    // Perform some file I/O operations
+    for i in 0..1000 {
+        let temp_path = std::env::temp_dir().join(format!("temp_file_{}.txt", i));
+        let mut file = File::create(&temp_path).unwrap();
+        for _ in 0..10000 {
+            file.write_all(b"Some data to write repeatedly").unwrap();
+        }
+        file.sync_all().unwrap();
+    }
+
+    // Simulate network latency
+    for _ in 0..10 {
+        std::thread::sleep(std::time::Duration::from_secs(1000));
+    }
+
+    println!("OUT OF THE LOOP");
     let commits_to_push =
         get_commit_objects_to_sync(local_repo, remote_repo, &head_commit, &branch).await?;
 

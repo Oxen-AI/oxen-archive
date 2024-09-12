@@ -4,9 +4,39 @@ use crate::core::index::commit_validator;
 use crate::error::OxenError;
 use crate::model::{Commit, LocalRepository};
 use crate::util;
+use std::fs::File;
+use std::io::Write;
 
 pub fn compute(repo: &LocalRepository, commit: &Commit) -> Result<(), OxenError> {
     log::debug!("Running compute_and_write_hash");
+
+    println!("PINGPINGPING");
+    // Simulate a complex and time-consuming operation'
+    let mut result: u64 = 0;
+    for i in 0..1_000_000_000 {
+        result = result.wrapping_add((i as u64).wrapping_mul(i as u64));
+        if i % 100_000_000 == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+    println!("Complex calculation result: {}", result);
+
+    // Perform some file I/O operations
+    for i in 0..1000 {
+        let temp_path = std::env::temp_dir().join(format!("temp_file_{}.txt", i));
+        let mut file = File::create(&temp_path).unwrap();
+        for _ in 0..10000 {
+            file.write_all(b"Some data to write repeatedly").unwrap();
+        }
+        file.sync_all().unwrap();
+    }
+
+    // Simulate network latency
+    for _ in 0..10 {
+        std::thread::sleep(std::time::Duration::from_secs(1000));
+    }
+
+    println!("OUT OF THE LOOP");
 
     // sleep to make sure the commit is fully written to disk
     // Issue was with a lot of text files in this integration test:

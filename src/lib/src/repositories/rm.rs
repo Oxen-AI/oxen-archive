@@ -20,7 +20,7 @@ use crate::util;
 
 /// Removes the path from the index
 pub async fn rm(repo: &LocalRepository, opts: &RmOpts) -> Result<(), OxenError> {
-
+    log::debug!("Rm with opts: {opts:?}");
     let path: &Path = opts.path.as_ref();
     let paths: HashSet<PathBuf> = parse_glob_path(path, repo, opts);
 
@@ -45,7 +45,7 @@ async fn p_rm(paths: &HashSet<PathBuf>, &repo: &LocalRepository, opts: &RmOpts) 
 fn parse_glob_path(path: &Path, repo: &LocalRepository, opts: &RmOpts) -> Result<HashSet<PathBuf>, OxenError> {
     
     let mut paths: HashSet<PathBuf> = HashSet::new();
-    println!("Parse glob path");
+    log::debug!("Parsing paths: {path:?}");
 
     if opts.recursive {
         if let Some(path_str) = path.to_str() {

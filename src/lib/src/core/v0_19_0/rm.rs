@@ -23,10 +23,7 @@ use crate::core::v0_19_0::structs::StagedMerkleTreeNode;
 
 use crate::model::Commit;
 use crate::model::StagedEntryStatus;
-use crate::constants::VERSIONS_DIR;
-use crate::constants::STAGED_DIR;
-use crate::model::EntryDataType;
-
+use crate::model::merkle_tree::node::DirNode;
 
 use rmp_serde::Serializer;
 use serde::Serialize;
@@ -82,8 +79,6 @@ fn remove(paths: &HashSet<PathBuf>, repo: &LocalRepository, opts: &RmOpts) -> Re
         data_type_counts: HashMap::new(),
     };
 
-    // TODO: Right now, this will delete the file even if oxen rm fails. Is that an issue?
-    println!("Not Staged: {:?}", paths);
     for path in paths {
 
         // Remove dirs
@@ -101,8 +96,7 @@ fn remove(paths: &HashSet<PathBuf>, repo: &LocalRepository, opts: &RmOpts) -> Re
             }
 
             // Remove files
-        } else {
-
+        } else if path.is_file() {
             match remove_file(repo, &maybe_head_commit, path) {
                 Ok(entry) => {
                     if let Some(entry) = entry {
@@ -129,8 +123,26 @@ fn remove(paths: &HashSet<PathBuf>, repo: &LocalRepository, opts: &RmOpts) -> Re
             if full_path.exists() {
                 util::fs::remove_file(&full_path)?;
             }
-        }  
-    
+        } else {
+            let mut maybe_dir_node = None;
+            log::debug!("Found non-existant path: {path:?}");
+            if let Some(ref head_commit) = maybe_head_commit {
+                let path = util::fs::path_relative_to_dir(path, &repo.path)?;
+                let parent_path = path.parent().unwrap_or(Path::new(""));
+                maybe_dir_node = CommitMerkleTree::dir_with_children(repo, head_commit, parent_path)?;
+            }
+
+            if let Ok(Some(_dir_node)) = get_dir_node(&maybe_dir_node, path) {
+                log::debug!("non-existant path {path:?} was dir. Calling remove_dir"); 
+                remove_dir(repo, &maybe_head_commit, path.to_path_buf());
+
+            } else if let Ok(Some(_file_node)) = get_file_node(&maybe_dir_node, &path) {
+                log::debug!("non-existant path {path:?} was file. Calling remove_file");
+                let opts = RmOpts::from_path(&path);
+                remove_file(repo, &maybe_head_commit, &path);
+            }
+        }
+
         // TODO: Refactor remove_dir to check paths in the merkle tree
         // That would allow this logic to safely happen within the loop above
         for path in paths {
@@ -251,7 +263,7 @@ pub fn remove_file(
     maybe_head_commit: &Option<Commit>,
     path: &Path,
 ) -> Result<Option<StagedMerkleTreeNode>, OxenError> {
-    println!("Made it to remove_file");
+    println!("Remove file");
     let repo_path = repo.path.clone();
     let versions_path = util::fs::oxen_hidden_dir(&repo.path)
         .join(VERSIONS_DIR)
@@ -639,6 +651,25 @@ fn get_file_node(
         if let Some(node) = node.get_by_path(path)? {
             if let EMerkleTreeNode::File(file_node) = &node.node {
                 Ok(Some(file_node.clone()))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+fn get_dir_node(
+    dir_node: &Option<MerkleTreeNode>,
+    path: impl AsRef<Path>,
+) -> Result<Option<DirNode>, OxenError> {
+    if let Some(node) = dir_node {
+        if let Some(node) = node.get_by_path(path)? {
+            if let EMerkleTreeNode::Directory(dir_node) = &node.node {
+                Ok(Some(dir_node.clone()))
             } else {
                 Ok(None)
             }

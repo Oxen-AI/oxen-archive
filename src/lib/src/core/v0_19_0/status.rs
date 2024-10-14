@@ -78,7 +78,8 @@ pub fn status_from_dir(
         return Ok(staged_data);
     };
 
-    let (dir_entries, dir_status, _) = read_staged_entries_below_path(repo, &staged_db, &dir, &read_progress)?;
+    let (dir_entries, dir_status, _) =
+        read_staged_entries_below_path(repo, &staged_db, &dir, &read_progress)?;
     // log::debug!("status_from_dir dir_entries: {:?}", dir_entries);
     read_progress.finish_and_clear();
 
@@ -228,7 +229,14 @@ pub fn read_staged_entries(
     repo: &LocalRepository,
     db: &DBWithThreadMode<SingleThreaded>,
     read_progress: &ProgressBar,
-) -> Result<(HashMap<PathBuf, Vec<StagedMerkleTreeNode>>, HashMap<PathBuf, StagedEntryStatus>, u64), OxenError> {
+) -> Result<
+    (
+        HashMap<PathBuf, Vec<StagedMerkleTreeNode>>,
+        HashMap<PathBuf, StagedEntryStatus>,
+        u64,
+    ),
+    OxenError,
+> {
     read_staged_entries_below_path(repo, db, Path::new(""), read_progress)
 }
 
@@ -237,7 +245,14 @@ pub fn read_staged_entries_below_path(
     db: &DBWithThreadMode<SingleThreaded>,
     start_path: impl AsRef<Path>,
     read_progress: &ProgressBar,
-) -> Result<(HashMap<PathBuf, Vec<StagedMerkleTreeNode>>, HashMap<PathBuf, StagedEntryStatus>, u64), OxenError> {
+) -> Result<
+    (
+        HashMap<PathBuf, Vec<StagedMerkleTreeNode>>,
+        HashMap<PathBuf, StagedEntryStatus>,
+        u64,
+    ),
+    OxenError,
+> {
     let start_path = util::fs::path_relative_to_dir(start_path.as_ref(), &repo.path)?;
     let mut total_entries = 0;
     let iter = db.iterator(IteratorMode::Start);

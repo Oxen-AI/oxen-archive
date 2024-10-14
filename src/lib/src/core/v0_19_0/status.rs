@@ -95,7 +95,6 @@ pub fn status_from_dir_entries(
         total_files: 0,
         paths: HashMap::new(),
     };
-    println!("dir_status: {dir_status:?}");
     log::debug!("dir_entries.len(): {:?}", dir_entries.len());
     for (dir, entries) in dir_entries {
         log::debug!(
@@ -255,21 +254,20 @@ pub fn read_staged_entries_below_path(
                     continue;
                 }
                 let entry: StagedMerkleTreeNode = rmp_serde::from_slice(&value).unwrap();
-                println!("read_staged_entries key {key} entry: {entry} path: {path:?}");
+                log::debug!("read_staged_entries key {key} entry: {entry} path: {path:?}");
                 let full_path = repo.path.join(path);
-                println!("full path: {full_path:?}");
 
 
                 // if the entry is a dir, add it as a key in dir_entries, and add its status to dir_status
                 if let EMerkleTreeNode::Directory(_) = &entry.node.node {
-                    println!("read_staged_entries adding dir {:?}", path);
+                    log::debug!("read_staged_entries adding dir {:?}", path);
                     dir_entries.entry(path.to_path_buf()).or_default();
                     dir_status.insert(path.to_path_buf(), entry.status.clone());
                 }
 
                 // add the file or dir as an entry under its parent dir
                 if let Some(parent) = path.parent() {
-                    println!(
+                    log::debug!(
                         "read_staged_entries adding file {:?} to parent {:?}",
                         path,
                         parent
@@ -294,9 +292,9 @@ pub fn read_staged_entries_below_path(
         dir_entries.len()
     );
     for (dir, entries) in dir_entries.iter() {
-        println!("commit dir_entries dir {:?}", dir);
+        log::debug!("commit dir_entries dir {:?}", dir);
         for entry in entries.iter() {
-            println!("\tcommit dir_entries entry {}", entry);
+            log::debug!("\tcommit dir_entries entry {}", entry);
         }
     }
 

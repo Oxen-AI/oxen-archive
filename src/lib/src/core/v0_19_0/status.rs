@@ -255,8 +255,6 @@ pub fn read_staged_entries_below_path(
                 }
                 let entry: StagedMerkleTreeNode = rmp_serde::from_slice(&value).unwrap();
                 log::debug!("read_staged_entries key {key} entry: {entry} path: {path:?}");
-                let full_path = repo.path.join(path);
-
 
                 // if the entry is a dir, add it as a key in dir_entries, and add its status to dir_status
                 if let EMerkleTreeNode::Directory(_) = &entry.node.node {
@@ -438,7 +436,7 @@ fn get_dir_node(
 
 fn is_ignored(path: &Path, gitignore: &Option<Gitignore>, is_dir: bool) -> bool {
     // Skip hidden .oxen files
-    if path.starts_with(OXEN_HIDDEN_DIR) | path.starts_with("data") | path.starts_with(".git") | path.starts_with("target") | path.starts_with("src") {
+    if path.starts_with(OXEN_HIDDEN_DIR) {
         return true;
     }
     if let Some(gitignore) = gitignore {

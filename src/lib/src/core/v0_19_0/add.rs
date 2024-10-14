@@ -128,7 +128,6 @@ fn add_files(
             let (stats, dirs) = add_dir(repo, &maybe_head_commit, path.clone())?;
             total += stats;
             added_dirs += dirs;
-
         } else if path.is_file() {
             let entry = add_file(repo, &maybe_head_commit, path)?;
             if let Some(entry) = entry {

@@ -68,4 +68,7 @@ jobs:
         run: cargo build
 
       - name: Run tests
-        run: ruby cli-test/spec/spec_remote_hub/test.rb
+        run: |
+          cd cli-test
+          bundle install
+          bundle exec rspec spec/test_cases/test.rb

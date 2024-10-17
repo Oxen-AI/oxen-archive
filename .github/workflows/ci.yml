@@ -136,6 +136,12 @@ jobs:
           echo '[target.aarch64-apple-darwin]' >> ~/.cargo/config
           echo 'rustflags = ["-C", "link-arg=-fuse-ld=/opt/homebrew/opt/llvm/bin/ld64.lld"]' >> ~/.cargo/config
 
+      - name: Brew Info LLVM
+        run: |
+          LLVM_INFO=$(brew info llvm)
+          echo "LLVM Information:"
+          echo "$LLVM_INFO"
+
       - name: Install and start Redis
         run: |
           brew install redis

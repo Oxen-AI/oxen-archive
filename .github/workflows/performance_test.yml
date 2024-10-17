@@ -1,0 +1,43 @@
+name: Scheduled Tests
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Runs at 00:00 UTC every day
+  workflow_dispatch:      # Allows manual triggering
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      OXEN_API_KEY: ${{ secrets.OXEN_API_KEY }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'  # Specify the Python version you need
+
+    - name: Install latest Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        target: x86_64-apple-darwin
+        default: true
+        profile: minimal
+        toolchain: stable
+        override: true
+
+    - name: Build Rust project
+      run: cargo build
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r cli-tests/requirements.txt
+
+    - name: Run tests
+      run: |
+        ruby cli-test/spec/spec_remote_hub/test.rb

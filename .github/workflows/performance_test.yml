@@ -30,40 +30,11 @@ jobs:
           echo '[target.aarch64-apple-darwin]' >> ~/.cargo/config
           echo 'rustflags = ["-C", "link-arg=-fuse-ld=lld"]' >> ~/.cargo/config
 
-      - name: Verify LLVM Installation
+      - name: Brew Info LLVM
         run: |
-          # Check if the LLVM linker exists at the specified path
-          if [ -f /opt/homebrew/opt/llvm/bin/ld64.lld ]; then
-            echo "LLVM linker found at /opt/homebrew/opt/llvm/bin/ld64.lld"
-          else
-            echo "LLVM linker not found at /opt/homebrew/opt/llvm/bin/ld64.lld"
-          fi
-
-          # Check if 'lld' is available in the PATH
-          if command -v lld > /dev/null; then
-            echo "'lld' is available in the PATH"
-          else
-            echo "'lld' is not available in the PATH"
-          fi
-
-          # Use 'which' to find the location of 'lld'
-          LLD_PATH=$(which lld)
-          if [ -n "$LLD_PATH" ]; then
-            echo "'lld' found at $LLD_PATH"
-          else
-            echo "'lld' not found in the system PATH"
-          fi
-
-          # Use 'find' and 'grep' to locate 'lld' in common directories
-          echo "Searching for 'lld' in /opt/homebrew/opt/llvm/bin and /usr/local/bin..."
-          FOUND_LLD=$(find /opt/homebrew/opt/llvm/bin /usr/local/bin -name 'lld' 2>/dev/null | grep 'lld')
-          if [ -n "$FOUND_LLD" ]; then
-            echo "'lld' found at the following locations:"
-            echo "$FOUND_LLD"
-          else
-            echo "'lld' not found in the specified directories"
-            exit 1
-          fi
+          LLVM_INFO=$(brew info llvm)
+          echo "LLVM Information:"
+          echo "$LLVM_INFO"
 
       - name: Cache Rust dependencies
         uses: actions/cache@v3

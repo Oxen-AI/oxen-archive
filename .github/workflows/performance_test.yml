@@ -79,6 +79,13 @@ jobs:
         run: |
           find . -type d -path "*/target/debug" | grep "target/debug"
 
+      - name: Find absolute path of target/debug directory
+        run: |
+          find . -type d -path "*/target/debug" -exec realpath {} \;
+
+      - name: Verify oxen binary location
+        run: ls -la ./target/debug
+
       - name: Run tests
         env:
           PATH: ./target/debug

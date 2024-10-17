@@ -19,6 +19,14 @@ jobs:
       - name: Install dependencies
         run: brew install pkg-config ffmpeg imagemagick
 
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0' # Specify the Ruby version you need
+
+      - name: Install Bundler
+        run: gem install bundler
+
       - name: Set up Python
         uses: actions/setup-python@v2
         with:

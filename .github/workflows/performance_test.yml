@@ -36,6 +36,9 @@ jobs:
           echo "LLVM Information:"
           echo "$LLVM_INFO"
 
+      - name: Install LLD
+        run: brew install lld
+
       - name: Cache Rust dependencies
         uses: actions/cache@v3
         with:

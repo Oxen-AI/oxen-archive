@@ -7,7 +7,7 @@ on:
 
 jobs:
   performance_test:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     env:
       OXEN_API_KEY: ${{ secrets.OXEN_API_KEY }}
@@ -15,6 +15,9 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: brew install pkg-config ffmpeg imagemagick
 
     - name: Set up Python
       uses: actions/setup-python@v2

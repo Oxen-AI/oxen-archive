@@ -81,7 +81,7 @@ jobs:
 
       - name: Run tests
         env:
-          PATH: ${{ env.PATH }}:./oxen-server/target/debug
+          PATH: ${{ env.PATH }}:./target/debug
         run: |
           cd cli-test
           bundle install

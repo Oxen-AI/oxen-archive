@@ -22,7 +22,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.0' # Specify the Ruby version you need
+          ruby-version: "3.0" # Specify the Ruby version you need
 
       - name: Install Bundler
         run: gem install bundler
@@ -88,7 +88,7 @@ jobs:
 
       - name: Run tests
         env:
-          PATH: ./target/debug
+          PATH: ${{ env.PATH }}:${{ github.workspace }}/target/debug
         run: |
           cd cli-test
           bundle install

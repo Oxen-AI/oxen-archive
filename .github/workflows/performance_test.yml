@@ -6,7 +6,7 @@ on:
   workflow_dispatch:      # Allows manual triggering
 
 jobs:
-  test:
+  performance_test:
     runs-on: ubuntu-latest
 
     env:

@@ -3,7 +3,7 @@ name: Performance Test
 on:
   schedule:
     - cron: "0 0 * * *" # Runs at 00:00 UTC every day
-  workflow_dispatch: # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   performance_test:
@@ -22,7 +22,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.0" # Specify the Ruby version you need
+          ruby-version: "3.0"
 
       - name: Install Bundler
         run: gem install bundler
@@ -30,7 +30,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: "3.x" # Specify the Python version you need
+          python-version: "3.x"
 
       - name: Install LLVM Linker
         run: |

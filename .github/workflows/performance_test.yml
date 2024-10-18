@@ -70,7 +70,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip || true
-          pip install -r cli-tests/requirements.txt || true
+          pip install -r cli-test/requirements.txt || true
 
       - name: Build Rust project
         run: cargo build

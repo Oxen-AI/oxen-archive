@@ -543,12 +543,9 @@ mod tests {
         let repo_new = RepoNew::from_root_commit("Testing-Name", "Testing-Namespace", root_commit);
         let req = test::request(&sync_dir, queue, "/api/repos");
 
-        let resp = controllers::repositories::create(
-            req,
-            actix_web::Either::Left(web::Json(repo_new.clone())),
-        )
-        .await
-        .unwrap();
+        let resp = controllers::repositories::create(req, web::Json(repo_new.clone()))
+            .await
+            .unwrap();
         assert_eq!(resp.status(), http::StatusCode::OK);
         let body = to_bytes(resp.into_body()).await.unwrap();
         let text = std::str::from_utf8(&body).unwrap();

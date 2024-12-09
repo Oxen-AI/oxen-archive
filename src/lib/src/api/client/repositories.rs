@@ -266,7 +266,7 @@ pub async fn create_repo_with_files(
 ) -> Result<RemoteRepository, OxenError> {
     let host = repo_new.host();
     let scheme = repo_new.scheme();
-    let url = api::endpoint::url_from_host_and_scheme(&host, "/with_files", scheme);
+    let url = api::endpoint::url_from_host_and_scheme(&host, "", scheme);
 
     let new_repo_json = json!({
         "name": repo_new.name,

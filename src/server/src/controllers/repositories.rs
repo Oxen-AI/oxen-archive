@@ -136,18 +136,13 @@ pub async fn stats(req: HttpRequest) -> actix_web::Result<HttpResponse, OxenHttp
 
 pub async fn create(
     req: HttpRequest,
-    payload: web::Json<RepoNew>,
+    payload: actix_web::Either<web::Json<RepoNew>, Multipart>,
 ) -> actix_web::Result<HttpResponse, OxenHttpError> {
     let app_data = app_data(&req)?;
-    handle_json_creation(app_data, payload)
-}
-
-pub async fn create_with_files(
-    req: HttpRequest,
-    payload: Multipart,
-) -> actix_web::Result<HttpResponse, OxenHttpError> {
-    let app_data = app_data(&req)?;
-    handle_multipart_creation(app_data, payload).await
+    match payload {
+        actix_web::Either::Left(json_data) => handle_json_creation(app_data, json_data),
+        actix_web::Either::Right(multipart) => handle_multipart_creation(app_data, multipart).await,
+    }
 }
 
 fn handle_json_creation(

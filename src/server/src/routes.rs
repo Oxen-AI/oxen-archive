@@ -7,6 +7,10 @@ use crate::services;
 pub fn config(cfg: &mut web::ServiceConfig) {
     // Create Repository
     cfg.route("", web::post().to(controllers::repositories::create))
+        .route(
+            "with_files",
+            web::post().to(controllers::repositories::create_with_files),
+        )
         // List Repositories in a Namespace
         .route(
             "/{namespace}",

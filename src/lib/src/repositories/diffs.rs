@@ -130,7 +130,7 @@ pub fn diff(
             return Err(OxenError::basic_str(error));
         };
 
-        let file_node = Some(
+        let file_node = (
             repositories::entries::get_file(&repository, &commit, &path_1)?.ok_or_else(|| {
                 OxenError::ResourceNotFound(
                     format!("Error: file {} not committed", path_1.as_ref().display()).into(),

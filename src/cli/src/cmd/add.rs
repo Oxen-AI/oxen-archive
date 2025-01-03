@@ -48,7 +48,7 @@ impl RunCmd for AddCmd {
                     OxenError::basic_str(format!("Failed to get current directory: {}", e))
                 })?;
                 let joined_path = current_dir.join(p);
-                joined_path.canonicalize().or_else(|_| Ok(joined_path))
+                Ok(joined_path)
             })
             .collect::<Result<Vec<PathBuf>, OxenError>>()?;
 

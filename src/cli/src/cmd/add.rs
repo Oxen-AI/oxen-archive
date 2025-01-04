@@ -48,10 +48,10 @@ impl RunCmd for AddCmd {
                     OxenError::basic_str(format!("Failed to get current directory: {}", e))
                 })?;
                 let joined_path = current_dir.join(p);
-                Ok(joined_path)
+                Ok(dunce::canonicalize(PathBuf::from(&joined_path))?)
             })
             .collect::<Result<Vec<PathBuf>, OxenError>>()?;
-
+            log::debug!("Paths: {paths:?}");
         let opts = AddOpts {
             paths,
             is_remote: false,

@@ -52,7 +52,7 @@ impl RunCmd for RmCmd {
                     OxenError::basic_str(format!("Failed to get current directory: {}", e))
                 })?;
                 let joined_path = current_dir.join(p);
-                Ok(joined_path)
+                Ok(dunce::canonicalize(PathBuf::from(&joined_path))?)
             })
             .collect::<Result<Vec<PathBuf>, OxenError>>()?;
 

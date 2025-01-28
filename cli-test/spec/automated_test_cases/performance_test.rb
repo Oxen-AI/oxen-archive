@@ -7,7 +7,7 @@ RSpec.describe 'test', type: :aruba do
   end
 
   after(:each) do
-    run_command_and_stop('rm -rf test-small-repo')
+    FileUtils.rm_rf('test-small-repo')
   end
 
   it 'tests oxen init, add, commit, and push with a small file' do

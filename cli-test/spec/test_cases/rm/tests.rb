@@ -6,7 +6,7 @@ RSpec.describe 'rm - test relative paths', type: :aruba do
   end
 
   after(:each) do
-    run_command_and_stop('rm -rf test-relative-paths')
+    FileUtils.rm_rf('test-relative-paths')
   end
 
   it 'tests oxen rm with relative paths from subdirectories' do

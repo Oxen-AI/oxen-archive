@@ -6,7 +6,7 @@ RSpec.describe 'schemas add - test relative paths', type: :aruba do
   end
 
   after(:each) do
-    run_command_and_stop('rm -rf test-schema-paths')
+    FileUtils.rm_rf('test-schema-paths')
   end
 
   it 'tests oxen schemas add with relative paths from subdirectories' do

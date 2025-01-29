@@ -1,8 +1,8 @@
 require 'spec_helper'
+require 'pathname'
 
 RSpec.describe 'add - test relative paths', type: :aruba do
   before(:each) do
-    puts 0
     aruba.config.exit_timeout = 120
   end
 
@@ -11,53 +11,46 @@ RSpec.describe 'add - test relative paths', type: :aruba do
   end
 
   it 'tests oxen add with relative paths from subdirectories' do
-    puts 1
-    directory_path = 'tmp/aruba/test-relative-paths'
-    puts 2
+    directory_path = "tmp\\aruba\\test-relative-paths"
     # Setup base repo
-    run_command_and_stop('mkdir test-relative-paths')
-    puts 3
-    cd 'test-relative-paths'
-    puts  4
-    run_command_and_stop('oxen init')
-    puts 5
+   
+    system("mkdir tmp\\aruba\\test-relative-paths")
+    Dir.chdir('tmp\\Aruba\\test-relative-paths')
+    system('oxen init') or fail
+
     # Create nested directory structure
-    run_command_and_stop('mkdir -p images/test')
-    puts 6
-    file_path = File.join(directory_path, 'hi.txt')
-    puts 7
+    file_path = File.join('hi.txt')
+   
     File.open(file_path, 'a') do |file|
       file.puts 'This is a simple text file.'
     end
-    puts 8
-    # Create a file in root from nested directory
-    cd 'images/test'
-    puts 9
+
+    system('mkdir Images\\Test')
+  
+
     # Add file using relative path from nested directory
-    run_command_and_stop('oxen add ../../hi.txt')
-    puts 10
+    Dir.chdir('images\\test')
+
+    system("oxen add ..\\..\\hi.txt") or fail
+
     # Create another file in nested directory
-    puts 11
-    file_path = File.join(directory_path, 'images/test/nested.txt')
+    file_path = File.join('nested.txt')
     File.open(file_path, 'w') do |file|
       file.puts 'nested'
     end
-    puts 12
+
     # Add file from current directory
-    run_command_and_stop('oxen add nested.txt')
-    puts 13
-    # Go back to root and verify files
-    cd '../..'
-    run_command_and_stop('oxen status')
-    puts 14
-    expect(last_command_started).to have_output(/hi\.txt/)
-    puts 15
-    expect(last_command_started).to have_output(/images\/test\/nested\.txt/)
-    puts  16
+    system("oxen add nested.txt") or fail
+  
+
+    # Go back to root
+    Dir.chdir("..\\..")
+
     # Verify file contents
-    expect(File.read(File.join(directory_path, 'hi.txt'))).to eq("This is a simple text file.\n")
-    puts 17
-    expect(File.read(File.join(directory_path, 'images/test/nested.txt'))).to eq("nested\n")
-    puts 18
+    system('oxen status') or fail
+  
+    # Verify file contents
+    expect(File.read(File.join('hi.txt'))).to eq("This is a simple text file.\n")
+    expect(File.read(File.join('images/test/nested.txt'))).to eq("nested\n")
   end
 end

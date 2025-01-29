@@ -2,6 +2,7 @@ require 'bundler/setup'
 require 'aruba/rspec'
 require 'fileutils'
 require 'dotenv'
+require 'pathname'
 
 # TODO: look into how tests can be "grouped" together so that the
 # before(:suite) and after(:suite) hooks can be used only where relevant

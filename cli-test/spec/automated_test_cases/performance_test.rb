@@ -12,8 +12,8 @@ RSpec.describe 'test', type: :aruba do
 
   it 'tests oxen init, add, commit, and push with a small file' do
     # Setup
-    measure_time('mkdir test-small-repo')
-    Dir.chdir('test-small-repo')
+    measure_time('mkdir tmp\\aruba\\test-small-repo')
+    Dir.chdir('tmp\\aruba\\test-small-repo')
 
     # Generate image repository
     system('python ../benchmark/generate_image_repo.py --output_dir ~/test-small-repo/Data/10k_images --num_images 10000 --num_dirs 10 --image_size 128 128')
@@ -21,7 +21,7 @@ RSpec.describe 'test', type: :aruba do
     # Initialize the repository
     init_time = measure_time('oxen init')
     puts "oxen init command took: #{init_time} seconds"
-    expect(init_time).to be < 7.0
+    expect(init_time).to be < 7.0F
 
 
     # Add the file
@@ -67,7 +67,6 @@ RSpec.describe 'test', type: :aruba do
     end
 
     Dir.chdir('performance-test')
-
     # Add, commit, and push the changes
     add_simple_time = measure_time('oxen add simple.txt')
     puts "oxen add simple.txt command took: #{add_simple_time} seconds"

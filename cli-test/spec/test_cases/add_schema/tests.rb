@@ -1,4 +1,6 @@
 require 'spec_helper'
+require 'json'
+require 'shellwords'
 
 RSpec.describe 'schemas add - test relative paths', type: :aruba do
   before(:each) do
@@ -41,32 +43,46 @@ RSpec.describe 'schemas add - test relative paths', type: :aruba do
 
     Dir.chdir('data\\frames')
 
+
     # Add and commit the CSV file
     system('oxen add test.csv') or fail
     system('oxen commit -m "adding test csv"') or fail
 
-    json = '{"oxen": "{"render": "{"func": "image"}"}"}'
+    # Build command to avoid json-parsing issues
+    metadata = {
+      "_oxen" => {
+        "render" => {
+          "func" => "image"
+        }
+      }
+    }
 
+    json_string = metadata.to_json
 
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    puts 1
-    
-    system('oxen schemas add -c image -m #{json} test.csv') or fail
-    
-    system("oxen schemas add ../../root.csv -c image -m #{json}") or fail
+    command = [
+      "oxen",
+      "schemas",
+      "add",
+      "test.csv",
+      "-c",
+      "image",
+      "-m",
+      json_string # Pass the JSON string directly
+    ]
+
+    command2 = [
+      "oxen",
+      "schemas",
+      "add",
+      "../../root.csv",
+      "-c",
+      "image",
+      "-m",
+      json_string # Pass the JSON string directly
+    ]
+
+    system(Shellwords.join(command)) or fail
+    system(Shellwords.join(command2)) or fail
 
     # Verify schema changes
     Dir.chdir('..')

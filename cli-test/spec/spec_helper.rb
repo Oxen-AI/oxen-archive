@@ -2,6 +2,7 @@ require 'bundler/setup'
 require 'aruba/rspec'
 require 'fileutils'
 require 'dotenv'
+require 'pathname'
 
 # TODO: look into how tests can be "grouped" together so that the
 # before(:suite) and after(:suite) hooks can be used only where relevant
@@ -20,16 +21,15 @@ RSpec.configure do |config|
   end
 
   config.before(:each) do
-    Dotenv.load('.env')
-    run_command_and_stop('oxen config --name ruby-test --email test@oxen.ai')
-    run_command_and_stop("oxen config --auth dev.hub.oxen.ai #{ENV['OXEN_API_KEY']}")
-    run_command_and_stop('oxen delete-remote --name EloyMartinez/performance-test --host dev.hub.oxen.ai -y',
-                         fail_on_error: false)
+    regexp = ".env".force_encoding('UTF-16LE')
+    Dotenv.load(regexp.encode('UTF-8'))
+    system("oxen config --name ruby-test --email test@oxen.ai")
+    system("oxen config --auth dev.hub.oxen.ai #{ENV['OXEN_API_KEY']}")
+    system('oxen delete-remote --name EloyMartinez/performance-test --host dev.hub.oxen.ai -y')
   end
 
   config.after(:each) do
     # Ensure the remote repository is deleted after each test
-    run_command_and_stop('oxen delete-remote --name EloyMartinez/performance-test --host dev.hub.oxen.ai -y',
-                         fail_on_error: false)
+    system("oxen delete-remote --name EloyMartinez/performance-test --host dev.hub.oxen.ai -y")
   end
 end

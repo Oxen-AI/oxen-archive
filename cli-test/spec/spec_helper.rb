@@ -7,6 +7,13 @@ require 'pathname'
 # TODO: look into how tests can be "grouped" together so that the
 # before(:suite) and after(:suite) hooks can be used only where relevant
 
+
+def run_system_command(cmd)
+  unless system(cmd)
+    raise "Command failed with exit status #{$?.exitstatus}: #{cmd}"
+  end
+end
+
 RSpec.configure do |config|
   config.include Aruba::Api
   config.include Aruba::Matchers
@@ -22,14 +29,14 @@ RSpec.configure do |config|
 
   config.before(:each) do
     regexp = ".env".force_encoding('UTF-16LE')
-    Dotenv.load(regexp.encode('UTF-8'))
-    system("oxen config --name ruby-test --email test@oxen.ai")
-    system("oxen config --auth dev.hub.oxen.ai #{ENV['OXEN_API_KEY']}")
-    system('oxen delete-remote --name EloyMartinez/performance-test --host dev.hub.oxen.ai -y')
+    Dotenv.load(".env")
+    run_system_command("oxen config --name ruby-test --email test@oxen.ai")
+    # run_system_command("oxen config --auth dev.hub.oxen.ai #{ENV['OXEN_API_KEY']}")
+    # run_system_command('oxen delete-remote --name EloyMartinez/performance-test --host dev.hub.oxen.ai -y')
   end
 
   config.after(:each) do
     # Ensure the remote repository is deleted after each test
-    system("oxen delete-remote --name EloyMartinez/performance-test --host dev.hub.oxen.ai -y")
+    # run_system_command("oxen delete-remote --name EloyMartinez/performance-test --host dev.hub.oxen.ai -y")
   end
 end

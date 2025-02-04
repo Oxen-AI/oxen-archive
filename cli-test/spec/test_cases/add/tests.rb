@@ -11,12 +11,16 @@ RSpec.describe 'add - test relative paths', type: :aruba do
   end
 
   it 'tests oxen add with relative paths from subdirectories' do
-    directory_path = "tmp\\aruba\\test-relative-paths"
+    
     # Setup base repo
-   
-    system("mkdir tmp\\aruba\\test-relative-paths")
-    Dir.chdir('tmp\\Aruba\\test-relative-paths')
-    system('oxen init') or fail
+    directory_path = File.join('tmp', 'aruba', 'test-relative-paths')
+    FileUtils.mkdir_p(directory_path)
+
+    # Capitalize path 
+    directory_path = File.join('Tmp', 'Aruba', 'test-relative-paths')
+    Dir.chdir(directory_path)
+    
+    run_system_command('oxen init') 
 
     # Create nested directory structure
     file_path = File.join('hi.txt')
@@ -25,32 +29,35 @@ RSpec.describe 'add - test relative paths', type: :aruba do
       file.puts 'This is a simple text file.'
     end
 
-    system('mkdir Images\\Test')
+    images_path = File.join('images', 'test')
+    FileUtils.mkdir_p(images_path)
   
-
     # Add file using relative path from nested directory
-    Dir.chdir('images\\test')
+    Dir.chdir(images_path)
 
-    system("oxen add ..\\..\\hi.txt") or fail
+    parent_path = File.join('..', '..')
+    file_path = File.join(parent_path, 'hi.txt')
+    run_system_command("oxen add #{file_path}")
 
     # Create another file in nested directory
-    file_path = File.join('nested.txt')
-    File.open(file_path, 'w') do |file|
+    nested_path = File.join('nested.txt')
+    File.open(nested_path, 'w') do |file|
       file.puts 'nested'
     end
 
     # Add file from current directory
-    system("oxen add nested.txt") or fail
-  
+    run_system_command("oxen add nested.txt") 
 
     # Go back to root
-    Dir.chdir("..\\..")
+    Dir.chdir(parent_path)
 
     # Verify file contents
-    system('oxen status') or fail
+    run_system_command('oxen status') 
   
     # Verify file contents
+    nested_path = File.join('images', 'test', 'nested.txt')
+
     expect(File.read(File.join('hi.txt'))).to eq("This is a simple text file.\n")
-    expect(File.read(File.join('images/test/nested.txt'))).to eq("nested\n")
+    expect(File.read(nested_path)).to eq("nested\n")
   end
 end

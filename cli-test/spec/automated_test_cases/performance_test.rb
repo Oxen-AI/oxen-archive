@@ -12,16 +12,18 @@ RSpec.describe 'test', type: :aruba do
 
   it 'tests oxen init, add, commit, and push with a small file' do
     # Setup
-    measure_time('mkdir tmp\\aruba\\test-small-repo')
-    Dir.chdir('tmp\\aruba\\test-small-repo')
+    repo_path = File.join('tmp', 'aruba', 'test-small-repo')
+    FileUtils.mkdir_p(repo_path)
+    Dir.chdir(repo_path)
 
     # Generate image repository
-    system('python ../benchmark/generate_image_repo.py --output_dir ~/test-small-repo/Data/10k_images --num_images 10000 --num_dirs 10 --image_size 128 128')
+    script_path = File.join('..', 'benchmark', 'generate_image_repo.py')
+    run_system_command("python #{script_path} --output_dir ~/test-small-repo/Data/10k_images --num_images 10000 --num_dirs 10 --image_size 128 128")
 
     # Initialize the repository
     init_time = measure_time('oxen init')
     puts "oxen init command took: #{init_time} seconds"
-    expect(init_time).to be < 7.0F
+    expect(init_time).to be < 7.0
 
 
     # Add the file
@@ -92,7 +94,7 @@ RSpec.describe 'test', type: :aruba do
     puts "oxen checkout command took: #{checkout_time} seconds"
     expect(checkout_time).to be < 7.0
 
-    directory_path = 'tmp/aruba/test-small-repo'
+    directory_path = File.join('tmp', 'aruba', 'test-small-repo')
     file_path = File.join(directory_path, 'simple.txt')
 
     # Ensure the directory exists
@@ -134,9 +136,9 @@ RSpec.describe 'test', type: :aruba do
     puts "oxen checkout main command took: #{checkout_main_branch_time} seconds"
     expect(checkout_main_branch_time).to be < 100.0
 
-    system('mkdir files')
+    FileUtils.mkdir_p('files')
 
-      directory_path = 'tmp/aruba/test-small-repo'
+      directory_path = File.join('tmp', 'aruba', 'test-small-repo') 
 
       30.times do |i|
         file_path = File.join('README.md')
@@ -147,8 +149,8 @@ RSpec.describe 'test', type: :aruba do
         File.open(file_path, 'w') do |file|
           file.puts "hello #{i} world"
         end
-        system('oxen add .')
-        system("oxen commit -m \"commit #{i}\"")
+        run_system_command('oxen add .')
+        run_system_command("oxen commit -m \"commit #{i}\"")
         puts "Completed commit #{i + 1} of 30"
       end
 
@@ -162,7 +164,7 @@ RSpec.describe 'test', type: :aruba do
 
   def measure_time(command)
     start_time = Time.now
-    system(command)
+    run_system_command(command)
     end_time = Time.now
     end_time - start_time
   end

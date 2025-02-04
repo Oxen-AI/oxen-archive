@@ -63,32 +63,11 @@ RSpec.describe 'schemas add - test relative paths', type: :aruba do
     }
 
     json_string = metadata.to_json
-
-    command = [
-      "oxen",
-      "schemas",
-      "add",
-      "test.csv",
-      "-c",
-      "image",
-      "-m",
-      json_string # Pass the JSON string directly
-    ]
-
     root_path = File.join('..', '..', 'root.csv')
-    command2 = [
-      "oxen",
-      "schemas",
-      "add",
-      root_path,
-      "-c",
-      "image",
-      "-m",
-      json_string # Pass the JSON string directly
-    ]
 
-    run_system_command(Shellwords.join(command)) 
-    run_system_command(Shellwords.join(command2)) 
+    system('oxen', 'schemas', 'add', 'test.csv', '-c', 'image', '-m', json_string) or fail
+    system('oxen', 'schemas', 'add', root_path, '-c', 'image', '-m', json_string) or fail
+ 
 
     # Verify schema changes
     Dir.chdir('..')

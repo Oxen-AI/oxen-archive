@@ -1,6 +1,7 @@
 require 'spec_helper'
 require 'json'
 require 'shellwords'
+require 'open3'
 
 RSpec.describe 'schemas add - test relative paths', type: :aruba do
   before(:each) do
@@ -68,6 +69,11 @@ RSpec.describe 'schemas add - test relative paths', type: :aruba do
     system('oxen', 'schemas', 'add', 'test.csv', '-c', 'image', '-m', json_string) or fail
     system('oxen', 'schemas', 'add', root_path, '-c', 'image', '-m', json_string) or fail
  
+    status = Open3.capture2('oxen status')
+    lines = status[0].split("\n")
+    schema = lines[10]
+
+    expect(schema).to eq("Schemas to be committed") 
 
     # Verify schema changes
     Dir.chdir('..')

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use clap::{Arg, Command};
 use std::path::{Path, PathBuf};
+use crate::util;
 
 use liboxen::error::OxenError;
 use liboxen::model::LocalRepository;
@@ -51,17 +52,12 @@ impl RunCmd for SchemasAddCmd {
                     OxenError::basic_str(format!("Failed to get current directory: {}", e))
                 })?;
                 let path = current_dir.join(p);
-                path.canonicalize().map_err(|e| {
-                    OxenError::basic_str(format!(
-                        "Failed to resolve path '{}': {}",
-                        path.display(),
-                        e
-                    ))
-                })
+                util::fs::canonicalize(&path).or_else(|_| Ok(path))
             })
             .transpose()?;
 
         // Flags
+        println!("Path {path:?}");
         let column = args.get_one::<String>("column");
         let metadata = args.get_one::<String>("metadata");
         let render = args.get_one::<String>("render");
@@ -81,11 +77,13 @@ impl RunCmd for SchemasAddCmd {
 
         // Find the repo
         let repository = LocalRepository::from_current_dir()?;
+        println!("Repo path: {:?}", repository.path);
 
         // If a column is supplied, then we need to supply a data type or metadata for that column
         if let Some(column) = column {
             if let Some(render) = render {
                 let render_json = self.generate_render_json(render)?;
+                println!("1");
                 match self.schema_add_column_metadata(&repository, path, column, render_json) {
                     Ok(_) => {}
                     Err(err) => {
@@ -95,6 +93,7 @@ impl RunCmd for SchemasAddCmd {
             }
 
             if let Some(metadata) = metadata {
+                println!("2");
                 match self.schema_add_column_metadata(&repository, path, column, metadata) {
                     Ok(_) => {}
                     Err(err) => {
@@ -105,6 +104,7 @@ impl RunCmd for SchemasAddCmd {
         } else {
             // No column, check if we are just adding metadata to the schema
             if let Some(metadata) = metadata {
+                println!("3");
                 match self.schema_add_metadata(&repository, path, metadata) {
                     Ok(_) => {}
                     Err(err) => {

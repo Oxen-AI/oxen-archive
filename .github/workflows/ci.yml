@@ -203,10 +203,10 @@ jobs:
           cargo test -- --test-threads=1
 
       - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: oxen-binary
-        path: target/debug/oxen*
+        uses: actions/upload-artifact@v4
+        with:
+          name: oxen-binary
+          path: target/debug/oxen*
 
   rspec_test_macos:
     name: MacOS RSpec CLI Tests

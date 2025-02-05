@@ -1,7 +1,7 @@
+use crate::util;
 use async_trait::async_trait;
 use clap::{Arg, Command};
 use std::path::{Path, PathBuf};
-use crate::util;
 
 use liboxen::error::OxenError;
 use liboxen::model::LocalRepository;

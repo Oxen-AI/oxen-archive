@@ -69,15 +69,13 @@ RSpec.describe 'schemas add - test relative paths', type: :aruba do
     system('oxen', 'schemas', 'add', 'test.csv', '-c', 'image', '-m', json_string) or fail
     system('oxen', 'schemas', 'add', root_path, '-c', 'image', '-m', json_string) or fail
  
-    status = Open3.capture2('oxen status')
-    lines = status[0].split("\n")
-    schema = lines[10]
+    # Verify schema changes 
+    status_output = Open3.capture2('oxen status')
+    output_lines = status_output[0].split("\n")
+    schema_line = output_lines[10]
 
-    expect(schema).to eq("Schemas to be committed") 
+    expect(schema_line).to eq("Schemas to be committed") 
 
-    # Verify schema changes
-    Dir.chdir('..')
-    run_system_command('oxen status') 
 
   end
 end

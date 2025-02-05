@@ -271,7 +271,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: oxen-binary
+          name: oxen-binary.exe
           path: target/debug
 
       - name: Set up Ruby

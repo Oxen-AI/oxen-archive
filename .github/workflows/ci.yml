@@ -209,7 +209,7 @@ jobs:
           path: target/debug/oxen*
 
   rspec_test_macos:
-    name: MacOS RSpec CLI Tests
+    name: RSpec CLI Tests
     needs: [test_macos]
     runs-on: macos-latest
 

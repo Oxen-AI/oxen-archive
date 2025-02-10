@@ -205,11 +205,11 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: oxen-binary.exe
+          name: oxen-binary
           path: target/debug/oxen*
 
-  rspec_test_macos:
-    name: RSpec CLI Tests
+  rpsec_tests_macos:
+    name: MacOS RSpec CLI Tests
     needs: [test_macos]
     runs-on: macos-latest
 
@@ -271,7 +271,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: oxen-binary.exe
+          name: oxen-binary
           path: target/debug
 
       - name: Set up Ruby
@@ -291,4 +291,5 @@ jobs:
           PATH: ${{ env.PATH }}:${{ github.workspace }}/target/debug
         working-directory: ./cli-test
         run: |
+          $env:PATH
           bundle exec rspec spec/test_cases/**/tests.rb

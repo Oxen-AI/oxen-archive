@@ -287,8 +287,8 @@ jobs:
 
       - name: Run RSpec tests
         env:
-          PATH: ${{ env.PATH }}:${{ github.workspace }}/target/debug
+          PATH: ${{ env.PATH }};${{ github.workspace }}/target/debug
         working-directory: ./cli-test
         run: |
-          $env:PATH
+
           bundle exec rspec spec/test_cases/**/tests.rb

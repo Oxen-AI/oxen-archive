@@ -11,9 +11,6 @@ RSpec.describe 'schemas add - test relative paths', type: :aruba do
   after(:each) do
     FileUtils.rm_rf('test-schema-paths')
 
-    # Return to cli-test 
-    parent_path = File.join('..', '..')
-    Dir.chdir(parent_path)
   end
 
   it 'tests oxen schemas add with relative paths from subdirectories' do
@@ -81,6 +78,10 @@ RSpec.describe 'schemas add - test relative paths', type: :aruba do
 
     expect(schema_line).to eq("Schemas to be committed") 
 
+
+    # Return to cli-test 
+    parent_path = File.join('..', '..', '..', '..')
+    Dir.chdir(parent_path)
 
   end
 end

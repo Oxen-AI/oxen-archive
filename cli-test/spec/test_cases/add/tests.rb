@@ -9,9 +9,6 @@ RSpec.describe 'add - test relative paths', type: :aruba do
   after(:each) do
     FileUtils.rm_rf('test-relative-paths')
 
-    # Return to cli-test 
-    parent_path = File.join('..', '..')
-    Dir.chdir(parent_path)
   end
 
   it 'tests oxen add with relative paths from subdirectories' do
@@ -63,5 +60,11 @@ RSpec.describe 'add - test relative paths', type: :aruba do
 
     expect(File.read(File.join('hi.txt'))).to eq("This is a simple text file.\n")
     expect(File.read(nested_path)).to eq("nested\n")
+
+    
+    # Return to cli-test 
+    parent_path = File.join('..', '..')
+    Dir.chdir(parent_path)
+    
   end
 end

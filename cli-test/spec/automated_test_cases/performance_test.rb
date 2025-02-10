@@ -8,6 +8,10 @@ RSpec.describe 'test', type: :aruba do
 
   after(:each) do
     FileUtils.rm_rf('test-small-repo')
+    
+    # Return to cli-test 
+    parent_path = File.join('..', '..')
+    Dir.chdir(parent_path)
   end
 
   it 'tests oxen init, add, commit, and push with a small file' do

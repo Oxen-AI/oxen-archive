@@ -7,6 +7,10 @@ RSpec.describe 'rm - test relative paths', type: :aruba do
 
   after(:each) do
     FileUtils.rm_rf('test-relative-paths')
+
+    # Return to cli-test 
+    parent_path = File.join('..', '..')
+    Dir.chdir(parent_path)
   end
 
   it 'tests oxen rm with relative paths from subdirectories' do

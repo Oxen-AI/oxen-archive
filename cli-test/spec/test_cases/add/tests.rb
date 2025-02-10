@@ -9,7 +9,7 @@ RSpec.describe 'add - test relative paths', type: :aruba do
   after(:each) do
     FileUtils.rm_rf('test-relative-paths')
 
-    # Experimental fix for cli tests
+    # Return to cli-test 
     parent_path = File.join('..', '..')
     Dir.chdir(parent_path)
   end

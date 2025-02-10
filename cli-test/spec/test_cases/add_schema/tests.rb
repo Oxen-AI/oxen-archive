@@ -10,6 +10,10 @@ RSpec.describe 'schemas add - test relative paths', type: :aruba do
 
   after(:each) do
     FileUtils.rm_rf('test-schema-paths')
+
+    # Return to cli-test 
+    parent_path = File.join('..', '..')
+    Dir.chdir(parent_path)
   end
 
   it 'tests oxen schemas add with relative paths from subdirectories' do
@@ -71,6 +75,7 @@ RSpec.describe 'schemas add - test relative paths', type: :aruba do
  
     # Verify schema changes 
     status_output = Open3.capture2('oxen status')
+    puts status_output
     output_lines = status_output[0].split("\n")
     schema_line = output_lines[10]
 

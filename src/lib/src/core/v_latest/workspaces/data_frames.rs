@@ -15,7 +15,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::model::merkle_tree::node::{EMerkleTreeNode, FileNode, StagedMerkleTreeNode};
 use crate::model::staged_row_status::StagedRowStatus;
-use crate::model::{Commit, EntryDataType, LocalRepository, MerkleHash, Workspace};
+use crate::model::{
+    Commit, EntryDataType, LocalRepository, MerkleHash, StagedEntryStatus, Workspace,
+};
 use crate::repositories;
 use crate::{error::OxenError, util};
 use std::path::{Path, PathBuf};
@@ -260,6 +262,8 @@ pub fn rename(
     if let EMerkleTreeNode::File(file) = &mut new_staged_entry.node.node {
         file.set_name(new_path.to_str().unwrap());
     }
+
+    new_staged_entry.status = StagedEntryStatus::Added;
 
     let mut buf = Vec::new();
     new_staged_entry

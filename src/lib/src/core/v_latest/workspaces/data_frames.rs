@@ -263,6 +263,9 @@ pub fn rename(
         file.set_name(new_path.to_str().unwrap());
     }
 
+    // The og status of this entry would be modified, but since we are changing its destination
+    // specially if we out it in a new folder, we need to ensure it is set to added
+    // So in compute_dir_node we set the num_entries of the parent dir to 1.
     new_staged_entry.status = StagedEntryStatus::Added;
 
     let mut buf = Vec::new();

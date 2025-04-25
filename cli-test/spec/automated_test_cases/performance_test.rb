@@ -1,7 +1,7 @@
 require 'spec_helper'
 require 'dotenv'
 
-RSpec.describe 'test', type: :aruba do
+RSpec.describe 'test', type: :aruba, :performance_test => true do
   before(:each) do
     aruba.config.exit_timeout = 6000 # Set the timeout to 600 0seconds
   end
@@ -18,14 +18,15 @@ RSpec.describe 'test', type: :aruba do
     Dir.chdir(repo_path)
 
     # Generate image repository
-    script_path = File.join('..', 'benchmark', 'generate_image_repo.py')
-    run_system_command("python #{script_path} --output_dir ~/test-small-repo/Data/10k_images --num_images 10000 --num_dirs 10 --image_size 128 128")
+    root_dir = File.expand_path('../../..', __dir__) 
+    script_path = File.join(root_dir, 'benchmark', 'generate_image_repo.py')
+    output_dir = File.expand_path('~/test-small-repo/Data/10k_images')
+    run_system_command("python #{script_path} --output_dir #{output_dir} --num_images 10000 --num_dirs 10 --image_size 128 128")
 
     # Initialize the repository
     init_time = measure_time('oxen init')
     puts "oxen init command took: #{init_time} seconds"
     expect(init_time).to be < 7.0
-
 
     # Add the file
     add_time = measure_time('oxen add .')
@@ -36,6 +37,7 @@ RSpec.describe 'test', type: :aruba do
     commit_time = measure_time('oxen commit -m "Add small file"')
     puts "oxen commit command took: #{commit_time} seconds"
     expect(commit_time).to be < 85.0
+    
     # Create the remote repository
     create_remote_time = measure_time('oxen create-remote --name EloyMartinez/performance-test --host dev.hub.oxen.ai --scheme https --is_public')
     puts "oxen create-remote command took: #{create_remote_time} seconds"

@@ -53,6 +53,8 @@ RSpec.describe 'oxen download', type: :aruba do
     # Verify file contents
     expect(File.read(File.join('hi2.txt'))).to eq("This is a simple text file.\n")
 
+    run_system_command("oxen delete-remote --name #{remote_repo_name} --host localhost:3000 --scheme http -y")
+
     # Return to cli-test
     parent_path = File.join('..', '..')
     Dir.chdir(parent_path)

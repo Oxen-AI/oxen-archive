@@ -29,15 +29,15 @@ RSpec.configure do |config|
   end
 
   config.before(:each) do
-
     regexp = ".env".force_encoding('UTF-16LE')
     Dotenv.load(regexp.encode('UTF-8'))
+    run_system_command("oxen config --auth dev.hub.oxen.ai #{ENV['OXEN_API_KEY']}")
     run_system_command("oxen config --name ruby-test --email test@oxen.ai")
-    system("oxen delete-remote --name ox/performance-test --host localhost:3000 -y --scheme http")
+    run_system_command("oxen config --name ruby-test --email test@oxen.ai --host localhost:3000 --scheme http")
   end
 
-  config.after(:each) do
+  config.after(:each, :performance_test => true) do
     # Ensure the remote repository is deleted after each test
-    system("oxen delete-remote --name ox/performance-test --host localhost:3000 -y --scheme http")
+    system("oxen delete-remote --name EloyMartinez/performance-test --host dev.hub.oxen.ai -y")
   end
 end

@@ -253,6 +253,35 @@ pub fn should_restore_file(
     Ok(true)
 }
 
+// Skip hashing the file in the working path
+pub fn should_restore_hashed_file(
+    repo: &LocalRepository,
+    base_node: Option<FileNode>,
+    file_node: &FileNode,
+    path: impl AsRef<Path>,
+    hash: MerkleHash,
+) -> Result<bool, OxenError> {
+    let path = path.as_ref();
+    let working_path = repo.path.join(path);
+
+    // Check to see if the file has been modified if it exists
+    if working_path.exists() {
+        // If there are modifications compared to the base node, we should not restore the file
+        if let Some(base_node) = base_node {
+            let base_node_hash = base_node.hash();
+            if hash != *base_node_hash {
+                return Ok(false);
+            }
+        } else {
+            // Untracked file, check if we are overwriting it
+            if hash != *file_node.hash() {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
 pub fn restore_file(
     repo: &LocalRepository,
     file_node: &FileNode,

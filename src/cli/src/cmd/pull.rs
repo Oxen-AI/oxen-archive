@@ -21,8 +21,6 @@ impl RunCmd for PullCmd {
         NAME
     }
 
-
-
     fn args(&self) -> Command {
         Command::new(NAME)
             .about("Pull the files up from a remote branch")
@@ -45,10 +43,9 @@ impl RunCmd for PullCmd {
     }
 
     async fn run(&self, args: &clap::ArgMatches) -> Result<(), OxenError> {
-        
         let repository = LocalRepository::from_current_dir()?;
         let current_branch = repositories::branches::current_branch(&repository)?;
-        
+
         // Parse args
         let remote = args
             .get_one::<String>("REMOTE")
@@ -60,7 +57,7 @@ impl RunCmd for PullCmd {
                 &current_branch.unwrap().name
             } else {
                 DEFAULT_BRANCH_NAME
-            }            
+            }
         };
         let all = args.get_flag("all");
 

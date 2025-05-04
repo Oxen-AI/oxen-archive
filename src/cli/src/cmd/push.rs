@@ -22,7 +22,6 @@ impl RunCmd for PushCmd {
         NAME
     }
 
-
     fn args(&self) -> Command {
         Command::new(NAME)
             .about("Push the the files to the remote branch")
@@ -32,10 +31,7 @@ impl RunCmd for PushCmd {
                     .default_value(DEFAULT_REMOTE_NAME)
                     .default_missing_value(DEFAULT_REMOTE_NAME),
             )
-            .arg(
-                Arg::new("BRANCH")
-                    .help("Branch name to push to")
-            )
+            .arg(Arg::new("BRANCH").help("Branch name to push to"))
             .arg(
                 Arg::new("delete")
                     .long("delete")
@@ -61,13 +57,14 @@ impl RunCmd for PushCmd {
             if current_branch.is_some() {
                 &current_branch.unwrap().name
             } else {
-                return Err(OxenError::basic_str(format!("Error: Cannot push from non-existant branch")));
+                return Err(OxenError::basic_str(format!(
+                    "Error: Cannot push from non-existant branch"
+                )));
             }
         };
 
         // Call into liboxen to push or delete
         if args.get_flag("delete") {
-
             let host = get_host_from_repo(&repo)?;
             check_remote_version(host).await?;
 

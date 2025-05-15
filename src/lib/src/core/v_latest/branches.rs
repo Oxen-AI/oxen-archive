@@ -1,19 +1,18 @@
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crate::core::v_latest::index::restore::{self, FileToRestore};
 use crate::core::v_latest::fetch;
+use crate::core::v_latest::index::restore::{self, FileToRestore};
 use crate::core::v_latest::index::CommitMerkleTree;
 use crate::error::OxenError;
 use crate::model::merkle_tree::node::{EMerkleTreeNode, MerkleTreeNode};
-use crate::model::{Commit, CommitEntry, LocalRepository, MerkleHash};
+use crate::model::{Commit, CommitEntry, LocalRepository, MerkleHash, PartialNode};
 use crate::repositories;
 use crate::util;
 
-
-use std::collections::{HashSet, HashMap};
+use filetime::FileTime;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use filetime::FileTime;
 
 struct CheckoutProgressBar {
     revision: String,
@@ -61,7 +60,7 @@ impl CheckoutProgressBar {
     }
 }
 
-// Structs grouping related fields to reduce the number of arguments fed into the recursive functions 
+// Structs grouping related fields to reduce the number of arguments fed into the recursive functions
 
 // files_to_restore: files present in the target tree but not the from tree
 // cannot_overwrite_entries: files that would be restored, but are modified from the from_tree, and thus would erase work if overwritten
@@ -70,7 +69,6 @@ struct CheckoutResult {
     pub cannot_overwrite_entries: Vec<PathBuf>,
 }
 
-
 impl CheckoutResult {
     pub fn new() -> Self {
         CheckoutResult {
@@ -78,11 +76,10 @@ impl CheckoutResult {
             cannot_overwrite_entries: vec![],
         }
     }
-
 }
 
 // seen_files: HashMap of MerkleHashes and PathBufs, removing the need to check files against the target tree in r_remove_if_not_in_target
-// common_nodes: HashSet of the hashes of all the dirs and vnodes that are common between the trees, removing the need to look up dirs and vnodes in the recursive functions 
+// common_nodes: HashSet of the hashes of all the dirs and vnodes that are common between the trees, removing the need to look up dirs and vnodes in the recursive functions
 struct CheckoutHashes {
     pub seen_hashes: HashSet<MerkleHash>,
     pub seen_paths: HashSet<PathBuf>,
@@ -103,24 +100,6 @@ impl CheckoutHashes {
             seen_hashes: HashSet::new(),
             seen_paths: HashSet::new(),
             common_nodes,
-        }
-    }
-}
-
-
-// Reduced form of the FileNode, used to save space
-#[derive(Eq, Hash, PartialEq, Debug)]
-pub struct PartialNode {
-    pub hash: MerkleHash,
-    pub last_modified: FileTime,
-}
-
-impl PartialNode {
-    pub fn from(hash: MerkleHash, last_modified_seconds: i64, last_modified_nanoseconds: u32) -> Self {
-        let last_modified = util::fs::last_modified_time(last_modified_seconds, last_modified_nanoseconds);
-        PartialNode {
-            hash,
-            last_modified,
         }
     }
 }
@@ -230,7 +209,9 @@ pub async fn checkout_subtrees(
         )?;
 
         if !results.cannot_overwrite_entries.is_empty() {
-            return Err(OxenError::cannot_overwrite_files(&results.cannot_overwrite_entries));
+            return Err(OxenError::cannot_overwrite_files(
+                &results.cannot_overwrite_entries,
+            ));
         }
 
         let version_store = repo.version_store()?;
@@ -269,6 +250,10 @@ pub async fn checkout_commit(
     Ok(())
 }
 
+// Notes for future optimizations:
+// If a dir or a vnode is shared between the trees, then all files under it will also be shared exactly
+// However, shared file nodes may not always fall under the same dirs and vnodes between the trees
+// Hence, it's necessary to traverse all unique paths in each tree at least once
 pub async fn set_working_repo_to_commit(
     repo: &LocalRepository,
     to_commit: &Commit,
@@ -276,34 +261,45 @@ pub async fn set_working_repo_to_commit(
 ) -> Result<(), OxenError> {
     let mut progress = CheckoutProgressBar::new(to_commit.id.clone());
 
+    // Load in the target tree, collecting every dir and vnode hash for comparison with the from tree
     let mut target_hashes = HashSet::new();
-    let Some(target_tree) = CommitMerkleTree::root_with_children_and_hashes(repo, to_commit, &mut target_hashes)? else {
+    let Some(target_tree) =
+        CommitMerkleTree::root_with_children_and_hashes(repo, to_commit, &mut target_hashes)?
+    else {
         return Err(OxenError::basic_str(
             "Cannot get root node for target commit",
         ));
     };
 
+    // If the from tree exists, load in the nodes not found in the target tree
+    // Also collects a 'PartialNode' of every file node unique to the from tree
+    // This is used to determine missing or modified files in the recursive function 
     let mut shared_hashes = HashSet::new();
     let mut partial_nodes = HashMap::new();
     let from_tree = if let Some(from_commit) = maybe_from_commit {
- 
-            if from_commit.id == to_commit.id {
-                return Ok(());
-            }
+        if from_commit.id == to_commit.id {
+            return Ok(());
+        }
 
-            log::debug!("from id: {:?}", from_commit.id);
-            log::debug!("to id: {:?}", to_commit.id);
-            CommitMerkleTree::root_with_unique_children(repo, from_commit, &mut target_hashes, &mut shared_hashes, &mut partial_nodes)
-                .map_err(|_| OxenError::basic_str("Cannot get root node for base commit"))?
+        log::debug!("from id: {:?}", from_commit.id);
+        log::debug!("to id: {:?}", to_commit.id);
+        CommitMerkleTree::root_with_unique_children(
+            repo,
+            from_commit,
+            &mut target_hashes,
+            &mut shared_hashes,
+            &mut partial_nodes,
+        )
+        .map_err(|_| OxenError::basic_str("Cannot get root node for base commit"))?
     } else {
         None
     };
 
-  
     let mut results = CheckoutResult::new();
     let mut hashes = CheckoutHashes::from_hashes(shared_hashes);
 
     log::debug!("restore_missing_or_modified_files");
+    // Restore files present in the target commit
     r_restore_missing_or_modified_files(
         repo,
         &target_tree,
@@ -314,10 +310,11 @@ pub async fn set_working_repo_to_commit(
         &mut hashes,
     )?;
 
-
     // If there are conflicts, return an error without restoring anything
     if !results.cannot_overwrite_entries.is_empty() {
-        return Err(OxenError::cannot_overwrite_files(&results.cannot_overwrite_entries));
+        return Err(OxenError::cannot_overwrite_files(
+            &results.cannot_overwrite_entries,
+        ));
     }
 
     // Cleanup files if checking out from another commit
@@ -332,7 +329,6 @@ pub async fn set_working_repo_to_commit(
         )?;
     }
 
-
     let version_store = repo.version_store()?;
     for file_to_restore in results.files_to_restore {
         restore::restore_file(
@@ -346,7 +342,6 @@ pub async fn set_working_repo_to_commit(
     Ok(())
 }
 
-// Remove files not present in the target tree
 // Only called if checking out from an existant commit
 fn cleanup_removed_files(
     repo: &LocalRepository,
@@ -419,7 +414,6 @@ fn r_remove_if_not_in_target(
         }
 
         EMerkleTreeNode::Directory(dir_node) => {
-
             let dir_path = current_path.join(dir_node.name());
             if hashes.common_nodes.contains(&from_node.hash) {
                 return Ok(());
@@ -503,19 +497,23 @@ fn r_restore_missing_or_modified_files(
                 // First check last modified times
                 let meta = util::fs::metadata(&full_path)?;
                 let last_modified = Some(FileTime::from_last_modification_time(&meta));
-                
+
                 // If last_modified matches the target, do nothing
-                let target_last_modified = util::fs::last_modified_time(file_node.last_modified_seconds(), file_node.last_modified_nanoseconds());
+                let target_last_modified = util::fs::last_modified_time(
+                    file_node.last_modified_seconds(),
+                    file_node.last_modified_nanoseconds(),
+                );
                 if last_modified == Some(target_last_modified) {
                     return Ok(());
                 }
 
                 // If last_modified matches a corresponding from_node, stage it to be restored
-                let (from_node, from_last_modified) = if let Some(from_node) = partial_nodes.get(&file_path) {
-                    (Some(from_node), Some(from_node.last_modified))
-                } else {
-                    (None, None)
-                };
+                let (from_node, from_last_modified) =
+                    if let Some(from_node) = partial_nodes.get(&file_path) {
+                        (Some(from_node), Some(from_node.last_modified))
+                    } else {
+                        (None, None)
+                    };
 
                 if last_modified == from_last_modified {
                     log::debug!("Updating modified file: {:?}", file_path);
@@ -536,13 +534,9 @@ fn r_restore_missing_or_modified_files(
                     return Ok(());
                 }
 
-                let from_hash = if let Some(from_node) = from_node {
-                    Some(from_node.hash.to_u128())
-                } else {
-                    None
-                };
+                let from_hash = from_node.map(|from_node| from_node.hash.to_u128());
                 //log::debug!("from hash: {from_hash:?}");
-                
+
                 if working_hash == from_hash {
                     log::debug!("Updating modified file: {:?}", file_path);
                     results.files_to_restore.push(FileToRestore {
@@ -556,11 +550,9 @@ fn r_restore_missing_or_modified_files(
                 // If neither hash matches, the file is modified in the working directory and cannot be overwritten
                 results.cannot_overwrite_entries.push(file_path.clone());
                 progress.increment_modified();
-                                
             }
         }
         EMerkleTreeNode::Directory(dir_node) => {
-
             let dir_path = path.join(dir_node.name());
             // Early exit if the directory is the same in the from and target trees
             if hashes.common_nodes.contains(&target_node.hash) {

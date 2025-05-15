@@ -6,17 +6,15 @@ use rocksdb::{DBWithThreadMode, IteratorMode, MultiThreaded};
 
 use crate::constants::{DIR_HASHES_DIR, HISTORY_DIR};
 use crate::core::db;
-use crate::core::v_latest::branches::PartialNode;
 use crate::core::db::merkle_node::MerkleNodeDB;
 
 use crate::model::merkle_tree::node::EMerkleTreeNode;
 
-use crate::model::merkle_tree::node::MerkleTreeNode;
 use crate::model::merkle_tree::node::FileNode;
+use crate::model::merkle_tree::node::MerkleTreeNode;
 
 use crate::error::OxenError;
-use crate::model::Commit;
-use crate::model::{LocalRepository, MerkleHash, MerkleTreeNodeType};
+use crate::model::{LocalRepository, MerkleHash, MerkleTreeNodeType, Commit, PartialNode};
 
 use crate::util::{self, hasher};
 
@@ -90,7 +88,13 @@ impl CommitMerkleTree {
         partial_nodes: &mut HashMap<PathBuf, PartialNode>,
     ) -> Result<Option<MerkleTreeNode>, OxenError> {
         let node_hash = MerkleHash::from_str(&commit.id)?;
-        CommitMerkleTree::read_unique_nodes(repo, &node_hash, base_hashes, shared_hashes, partial_nodes)
+        CommitMerkleTree::read_unique_nodes(
+            repo,
+            &node_hash,
+            base_hashes,
+            shared_hashes,
+            partial_nodes,
+        )
     }
 
     pub fn from_commit(repo: &LocalRepository, commit: &Commit) -> Result<Self, OxenError> {
@@ -301,7 +305,15 @@ impl CommitMerkleTree {
             PathBuf::new()
         };
 
-        CommitMerkleTree::load_unique_children(repo, &mut node_db, &mut node, &start_path, base_hashes, shared_hashes, partial_nodes)?;
+        CommitMerkleTree::load_unique_children(
+            repo,
+            &mut node_db,
+            &mut node,
+            &start_path,
+            base_hashes,
+            shared_hashes,
+            partial_nodes,
+        )?;
         Ok(Some(node))
     }
 
@@ -749,21 +761,19 @@ impl CommitMerkleTree {
                 MerkleTreeNodeType::Commit
                 | MerkleTreeNodeType::Dir
                 | MerkleTreeNodeType::VNode => {
-                    
-                // log::debug!("load_children_with_hashes recurse: {:?}", child.hash);
-                let Ok(mut node_db) = MerkleNodeDB::open_read_only(repo, &child.hash)
-                else {
-                    log::warn!("no child node db: {:?}", child.hash);
-                    return Ok(());
-                };
-                // log::debug!("load_children_with_hashes opened node_db: {:?}", child.hash);
-                CommitMerkleTree::load_children_with_hashes(
-                    repo,
-                    &mut node_db,
-                    &mut child,
-                    hashes,
-                )?;
-                node.children.push(child);
+                    // log::debug!("load_children_with_hashes recurse: {:?}", child.hash);
+                    let Ok(mut node_db) = MerkleNodeDB::open_read_only(repo, &child.hash) else {
+                        log::warn!("no child node db: {:?}", child.hash);
+                        return Ok(());
+                    };
+                    // log::debug!("load_children_with_hashes opened node_db: {:?}", child.hash);
+                    CommitMerkleTree::load_children_with_hashes(
+                        repo,
+                        &mut node_db,
+                        &mut child,
+                        hashes,
+                    )?;
+                    node.children.push(child);
                 }
                 // FileChunks and Schemas are leaf nodes
                 MerkleTreeNodeType::FileChunk | MerkleTreeNodeType::File => {
@@ -794,14 +804,11 @@ impl CommitMerkleTree {
         {
             return Ok(());
         }
-        
-       
+
         if base_hashes.contains(&node.hash) {
-            shared_hashes.insert(node.hash); 
+            shared_hashes.insert(node.hash);
             return Ok(());
         }
-
-       
 
         let children: Vec<(MerkleHash, MerkleTreeNode)> = node_db.map()?;
         // log::debug!("load_unique_children Got {} children", children.len());
@@ -814,8 +821,7 @@ impl CommitMerkleTree {
                 | MerkleTreeNodeType::Dir
                 | MerkleTreeNodeType::VNode => {
                     // log::debug!("load_unique_children  recurse: {:?}", child.hash);
-                    let Ok(mut node_db) = MerkleNodeDB::open_read_only(repo, &child.hash)
-                    else {
+                    let Ok(mut node_db) = MerkleNodeDB::open_read_only(repo, &child.hash) else {
                         log::warn!("no child node db: {:?}", child.hash);
                         return Ok(());
                     };
@@ -841,16 +847,18 @@ impl CommitMerkleTree {
                 }
                 // FileChunks and Schemas are leaf nodes
                 MerkleTreeNodeType::FileChunk | MerkleTreeNodeType::File => {
-
                     if let EMerkleTreeNode::File(file_node) = &child.node {
                         let file_path = current_path.join(PathBuf::from(file_node.name()));
                         //log::debug!("Adding path {file_path:?} to partial_nodes");
-                        let partial_node = PartialNode::from(*file_node.hash(), file_node.last_modified_seconds(), file_node.last_modified_nanoseconds());
+                        let partial_node = PartialNode::from(
+                            *file_node.hash(),
+                            file_node.last_modified_seconds(),
+                            file_node.last_modified_nanoseconds(),
+                        );
                         partial_nodes.insert(file_path, partial_node);
                     }
 
                     node.children.push(child);
-
                 }
             }
         }

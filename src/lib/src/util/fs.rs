@@ -1573,6 +1573,12 @@ pub fn remove_paths(src: &Path) -> Result<(), OxenError> {
 }
 
 pub fn is_modified_from_node(path: &Path, node: &FileNode) -> Result<bool, OxenError> {
+    // Hack?
+    if !path.exists() {
+        log::debug!("is_modified_from_node found non-existant path {path:?}. Returning false");
+        return Ok(false);
+    }
+
     let meta = util::fs::metadata(path)?;
     let file_last_modified = FileTime::from_last_modification_time(&meta);
 

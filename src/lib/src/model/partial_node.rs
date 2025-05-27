@@ -1,6 +1,6 @@
 use crate::model::MerkleHash;
-use filetime::FileTime;
 use crate::util;
+use filetime::FileTime;
 
 // Reduced form of the FileNode, used to save space
 #[derive(Eq, Hash, PartialEq, Debug, Clone)]

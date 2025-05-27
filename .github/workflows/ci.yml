@@ -35,8 +35,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
-          override: true
       - uses: actions-rs/cargo@v1
         with:
           command: check
@@ -71,10 +69,6 @@ jobs:
           restore-keys: |
             ${{ runner.OS }}-build-
       - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
       - run: rustup component add rustfmt
       - uses: actions-rs/cargo@v1
         with:
@@ -111,10 +105,6 @@ jobs:
           restore-keys: |
             ${{ runner.OS }}-build-
       - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
       - run: rustup component add clippy
       - uses: actions-rs/cargo@v1
         with:
@@ -159,10 +149,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           target: x86_64-apple-darwin
-          default: true
           profile: minimal
-          toolchain: stable
-          override: true
 
       - name: Run Tests
         run: |
@@ -189,9 +176,18 @@ jobs:
       - name: Install latest rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
-          default: true
-          override: true
+          profile: minimal
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run Tests
         run: |
@@ -205,9 +201,9 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.0'
+          ruby-version: "3.0"
           bundler-cache: true
-  
+
       - name: Run Rspec Tests
         env:
           PATH: ${{ env.PATH }};${{ github.workspace }}/target/debug
@@ -243,7 +239,6 @@ jobs:
           brew install pkg-config || brew upgrade pkg-config
           brew install ffmpeg imagemagick ruby
 
-
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -259,7 +254,7 @@ jobs:
           chmod +x target/debug/oxen-server
           ls -la target/debug/oxen-server
           file target/debug/oxen-server
-      
+
       - name: Run oxen-server
         run: |
           mkdir /tmp/oxen_sync/
@@ -270,7 +265,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.0'
+          ruby-version: "3.0"
           bundler-cache: true
 
       - name: Install Ruby dependencies
@@ -285,4 +280,3 @@ jobs:
         working-directory: ./cli-test
         run: |
           bundle exec rspec spec/test_cases/**/tests.rb
-    

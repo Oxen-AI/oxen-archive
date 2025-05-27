@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::constants::{AVG_CHUNK_SIZE, OXEN_HIDDEN_DIR};
 use crate::core;
-use crate::core::refs::with_ref_writer;
+use crate::core::refs::with_ref_manager;
 use crate::error::OxenError;
 use crate::model::entry::commit_entry::Entry;
 use crate::model::merkle_tree::node::{EMerkleTreeNode, FileNodeWithDir, MerkleTreeNode};
@@ -52,8 +52,8 @@ pub async fn fetch_remote_branch(
         // If the head commit is the same as the remote branch commit, we are up to date
         if head_commit.id == remote_branch.commit_id {
             println!("Repository is up to date.");
-            with_ref_writer(repo, |ref_writer| {
-                ref_writer.set_branch_commit_id(&remote_branch.name, &remote_branch.commit_id)
+            with_ref_manager(repo, |manager| {
+                manager.set_branch_commit_id(&remote_branch.name, &remote_branch.commit_id)
             })?;
             return Ok(remote_branch);
         }
@@ -91,7 +91,12 @@ pub async fn fetch_remote_branch(
     } else {
         let hash = MerkleHash::from_str(&remote_branch.commit_id)?;
         let commit_node = repositories::tree::get_node_by_id(repo, &hash)?.unwrap();
-        HashSet::from([commit_node.commit()?.to_commit()])
+
+        if core::commit_sync_status::commit_is_synced(repo, &hash) {
+            HashSet::new()
+        } else {
+            HashSet::from([commit_node.commit()?.to_commit()])
+        }
     };
     log::debug!("Fetch got {} commits", commits.len());
 

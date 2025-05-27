@@ -174,8 +174,9 @@ impl CommitMerkleTree {
             log::debug!("Look up dir 🗂️ {:?}", node_path);
             CommitMerkleTree::read_node(repo, &node_hash, load_recursive)?.ok_or(
                 OxenError::basic_str(format!(
-                    "Merkle tree hash not found for parent: '{}'",
-                    node_path.to_str().unwrap()
+                    "Merkle tree hash not found for dir: '{}' in commit: '{}'",
+                    node_path.to_str().unwrap(),
+                    commit.id
                 )),
             )?
         } else {
@@ -183,8 +184,9 @@ impl CommitMerkleTree {
             log::debug!("Look up file 📄 {:?}", node_path);
             CommitMerkleTree::read_file(repo, &dir_hashes, node_path)?.ok_or(
                 OxenError::basic_str(format!(
-                    "Merkle tree hash not found for parent: '{}'",
-                    node_path.to_str().unwrap()
+                    "Merkle tree hash not found for file: '{}' in commit: '{}'",
+                    node_path.to_str().unwrap(),
+                    commit.id
                 )),
             )?
         };
@@ -299,7 +301,11 @@ impl CommitMerkleTree {
         let mut node = MerkleTreeNode::from_hash(repo, hash)?;
         let mut node_db = MerkleNodeDB::open_read_only(repo, hash)?;
 
-        let start_path = PathBuf::new();
+        let start_path = if let EMerkleTreeNode::Directory(dir_node) = &node.node {
+            PathBuf::from(dir_node.name())
+        } else {
+            PathBuf::new()
+        };
 
         CommitMerkleTree::load_unique_children(
             repo,
@@ -843,10 +849,9 @@ impl CommitMerkleTree {
                 }
                 // FileChunks and Schemas are leaf nodes
                 MerkleTreeNodeType::FileChunk | MerkleTreeNodeType::File => {
-                    // TODO: Is this the wrong function? THe wrong check?
                     if let EMerkleTreeNode::File(file_node) = &child.node {
                         let file_path = current_path.join(PathBuf::from(file_node.name()));
-                        println!("Adding path {file_path:?} to partial_nodes");
+                        //log::debug!("Adding path {file_path:?} to partial_nodes");
                         let partial_node = PartialNode::from(
                             *file_node.hash(),
                             file_node.last_modified_seconds(),

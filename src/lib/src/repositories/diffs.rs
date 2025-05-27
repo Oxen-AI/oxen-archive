@@ -256,6 +256,18 @@ pub fn diff_tabular_file_nodes(
     diff_dfs(&df_1, &df_2, keys, targets, display)
 }
 
+pub fn diff_text_file_nodes(
+    repo: &LocalRepository,
+    file_1: &FileNode,
+    file_2: &FileNode,
+) -> Result<DiffResult, OxenError> {
+    let version_path_1 = util::fs::version_path_from_hash(repo, file_1.hash().to_string());
+    let version_path_2 = util::fs::version_path_from_hash(repo, file_2.hash().to_string());
+
+    let result = utf8_diff::diff(&version_path_1, &version_path_2)?;
+    Ok(DiffResult::Text(result))
+}
+
 pub fn tabular(
     file_1: impl AsRef<Path>,
     file_2: impl AsRef<Path>,
@@ -790,7 +802,7 @@ fn write_diff_dupes(
     let compare_dir = get_diff_dir(repo, compare_id);
 
     if !compare_dir.exists() {
-        std::fs::create_dir_all(&compare_dir)?;
+        util::fs::create_dir_all(&compare_dir)?;
     }
 
     let dupes_path = compare_dir.join(DUPES_PATH);
@@ -915,7 +927,7 @@ fn write_diff_df_cache(
 ) -> Result<(), OxenError> {
     let compare_dir = get_diff_dir(repo, compare_id);
     if !compare_dir.exists() {
-        std::fs::create_dir_all(&compare_dir)?;
+        util::fs::create_dir_all(&compare_dir)?;
     }
     // TODO: Expensive clone
     let mut df = diff.contents.clone();
@@ -959,7 +971,7 @@ fn write_diff_commit_ids(
     let compare_dir = get_diff_dir(repo, compare_id);
 
     if !compare_dir.exists() {
-        std::fs::create_dir_all(&compare_dir)?;
+        util::fs::create_dir_all(&compare_dir)?;
     }
 
     let left_path = compare_dir.join(LEFT_COMPARE_COMMIT);

@@ -3,20 +3,21 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use clap::{Arg, ArgMatches, Command};
 
-use liboxen::{api, core::oxenignore, error::OxenError, model::LocalRepository};
+use liboxen::{api, error::OxenError, model::LocalRepository};
 
-use crate::cmd::{add::add_args, RunCmd};
-pub const NAME: &str = "add";
-pub struct WorkspaceAddCmd;
+use crate::cmd::RunCmd;
+pub const NAME: &str = "download";
+pub struct WorkspaceDownloadCmd;
 
 #[async_trait]
-impl RunCmd for WorkspaceAddCmd {
+impl RunCmd for WorkspaceDownloadCmd {
     fn name(&self) -> &str {
         NAME
     }
 
     fn args(&self) -> Command {
-        add_args()
+        Command::new(NAME)
+            .about("Download files from a workspace")
             .arg(
                 Arg::new("workspace-id")
                     .long("workspace-id")
@@ -34,26 +35,31 @@ impl RunCmd for WorkspaceAddCmd {
                     .conflicts_with("workspace-id"),
             )
             .arg(
-                Arg::new("directory")
-                    .long("directory")
-                    .short('d')
-                    .help("The destination directory to add the workspace to")
-                    .default_value("."),
+                Arg::new("file")
+                    .long("file")
+                    .short('f')
+                    .required(true)
+                    .help("The path of the file to download from the workspace"),
+            )
+            .arg(
+                Arg::new("output")
+                    .long("output")
+                    .short('o')
+                    .help("The output path where the file should be saved"),
             )
             .arg_required_else_help(true)
     }
 
     async fn run(&self, args: &ArgMatches) -> Result<(), OxenError> {
         // Parse Args
-        let mut paths: Vec<PathBuf> = args
-            .get_many::<String>("files")
-            .expect("Must supply files")
-            .map(PathBuf::from)
-            .collect();
+        let file_path = args.get_one::<String>("file").expect("Must supply file");
 
         let workspace_name = args.get_one::<String>("workspace-name");
         let workspace_id = args.get_one::<String>("workspace-id");
-        let directory = args.get_one::<String>("directory").unwrap(); // safe to unwrap because we have a default value
+        let output_path = args
+            .get_one::<String>("output")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(file_path));
 
         let workspace_identifier = match workspace_id {
             Some(id) => id,
@@ -72,21 +78,13 @@ impl RunCmd for WorkspaceAddCmd {
         let repository = LocalRepository::from_current_dir()?;
         let remote_repo = api::client::repositories::get_default_remote(&repository).await?;
 
-        // Handle .oxenignore filtering
-        let ignore = oxenignore::create(&repository);
-        if let Some(ignore) = &ignore {
-            paths.retain(|path| !ignore.matched(path, path.is_dir()).is_ignore());
-        }
-
-        // If no paths left after filtering, return early
-        if paths.is_empty() {
-            return Err(OxenError::basic_str(
-                "No files to add after filtering with .oxenignore.",
-            ));
-        }
-
-        api::client::workspaces::files::add(&remote_repo, workspace_identifier, directory, paths)
-            .await?;
+        api::client::workspaces::files::download(
+            &remote_repo,
+            workspace_identifier,
+            file_path,
+            Some(&output_path),
+        )
+        .await?;
 
         Ok(())
     }

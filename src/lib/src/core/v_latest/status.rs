@@ -311,7 +311,15 @@ pub fn read_staged_entries_below_path(
                 if !path.starts_with(&start_path) {
                     continue;
                 }
-                let entry: StagedMerkleTreeNode = rmp_serde::from_slice(&value)?;
+
+                // Older versions may have a corrupted StagedMerkleTreeNode that was staged
+                // Ignore these when reading the staged db
+                let entry: Result<StagedMerkleTreeNode, rmp_serde::decode::Error> =
+                    rmp_serde::from_slice(&value);
+                let Ok(entry) = entry else {
+                    log::error!("read_staged_entries error decoding {key} path: {path:?}");
+                    continue;
+                };
                 log::debug!("read_staged_entries key {key} entry: {entry} path: {path:?}");
 
                 if let EMerkleTreeNode::Directory(_) = &entry.node.node {
@@ -346,10 +354,12 @@ pub fn read_staged_entries_below_path(
         "read_staged_entries dir_entries.len(): {:?}",
         dir_entries.len()
     );
-    for (dir, entries) in dir_entries.iter() {
-        log::debug!("commit dir_entries dir {:?}", dir);
-        for entry in entries.iter() {
-            log::debug!("\tcommit dir_entries entry {}", entry);
+    if log::max_level() == log::Level::Debug {
+        for (dir, entries) in dir_entries.iter() {
+            log::debug!("commit dir_entries dir {:?}", dir);
+            for entry in entries.iter() {
+                log::debug!("\tcommit dir_entries entry {}", entry);
+            }
         }
     }
 

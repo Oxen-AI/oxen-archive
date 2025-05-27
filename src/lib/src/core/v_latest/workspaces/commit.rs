@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::constants::STAGED_DIR;
 use crate::core;
 use crate::core::db;
-use crate::core::refs::with_ref_writer;
+use crate::core::refs::with_ref_manager;
 use crate::core::v_latest::workspaces;
 use crate::error::OxenError;
 use crate::model::merkle_tree::node::file_node::FileNodeOpts;
@@ -90,20 +90,17 @@ pub fn commit(
 
     // Update the branch
     let commit_id = commit.id.to_owned();
-    with_ref_writer(&workspace.base_repo, |ref_writer| {
-        ref_writer.set_branch_commit_id(branch_name, &commit_id)
+    with_ref_manager(&workspace.base_repo, |manager| {
+        manager.set_branch_commit_id(branch_name, &commit_id)
     })?;
 
-    // Cleanup workspace on commit
-    repositories::workspaces::delete(workspace)?;
-    if let Some(workspace_name) = &workspace.name {
-        repositories::workspaces::create_with_name(
-            &workspace.base_repo,
-            &commit,
-            workspace.id.clone(),
-            Some(workspace_name.clone()),
-            true,
-        )?;
+    if workspace.name.is_some() {
+        // Named workspaces aren't deleted on commit, instead we
+        // update the workspace config to point to the new commit
+        repositories::workspaces::update_commit(workspace, &commit_id)?;
+    } else {
+        // Unnamed workspaces are deleted on commit
+        repositories::workspaces::delete(workspace)?;
     }
 
     Ok(commit)

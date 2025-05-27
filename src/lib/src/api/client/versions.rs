@@ -247,7 +247,13 @@ async fn upload_chunk(
     let response = response.error_for_status()?;
     let mut headers = HashMap::new();
     for (name, value) in response.headers().into_iter() {
-        headers.insert(name.to_string(), value.to_str().unwrap().to_owned());
+        headers.insert(
+            name.to_string(),
+            value
+                .to_str()
+                .map_err(|e| OxenError::basic_str(format!("Invalid header value: {}", e)))?
+                .to_owned(),
+        );
     }
     Ok(headers)
 }
@@ -260,7 +266,7 @@ async fn complete_multipart_large_file_upload(
 ) -> Result<MultipartLargeFileUpload, OxenError> {
     let file_hash = &upload.hash.to_string();
 
-    let uri = format!("/versions/{file_hash}/chunks");
+    let uri = format!("/versions/{file_hash}/complete");
     let url = api::endpoint::url_from_repo(remote_repo, &uri)?;
     log::debug!("complete_multipart_large_file_upload {}", url);
     let client = client::new_for_url(&url)?;

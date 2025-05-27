@@ -5,7 +5,7 @@
 
 use crate::constants;
 use crate::core;
-use crate::core::refs::with_ref_writer;
+use crate::core::refs::with_ref_manager;
 use crate::core::v_latest::index::CommitMerkleTree;
 use crate::error::OxenError;
 use crate::error::NO_REPO_FOUND;
@@ -54,7 +54,7 @@ pub use checkout::checkout;
 pub use clone::{clone, clone_url, deep_clone_url};
 pub use commits::commit;
 pub use download::download;
-pub use fetch::fetch;
+pub use fetch::{fetch_all, fetch_branch};
 pub use init::init;
 pub use load::load;
 pub use pull::{pull, pull_all, pull_remote_branch};
@@ -189,6 +189,9 @@ pub fn transfer_namespace(
         )));
     }
 
+    // ensure DB instance is closed before we move the repo
+    core::refs::remove_from_cache(&repo_dir)?;
+
     util::fs::create_dir_all(&new_repo_dir)?;
     util::fs::rename(&repo_dir, &new_repo_dir)?;
 
@@ -217,12 +220,12 @@ pub fn create(root_dir: &Path, new_repo: RepoNew) -> Result<LocalRepositoryWithE
 
     // Create the repo dir
     log::debug!("repositories::create repo dir: {:?}", repo_dir);
-    std::fs::create_dir_all(&repo_dir)?;
+    util::fs::create_dir_all(&repo_dir)?;
 
     // Create oxen hidden dir
     let hidden_dir = util::fs::oxen_hidden_dir(&repo_dir);
     log::debug!("repositories::create hidden dir: {:?}", hidden_dir);
-    std::fs::create_dir_all(&hidden_dir)?;
+    util::fs::create_dir_all(&hidden_dir)?;
 
     // Create config file
     let local_repo = LocalRepository::new(&repo_dir)?;
@@ -230,11 +233,11 @@ pub fn create(root_dir: &Path, new_repo: RepoNew) -> Result<LocalRepositoryWithE
 
     // Create history dir
     let history_dir = util::fs::oxen_hidden_dir(&repo_dir).join(constants::HISTORY_DIR);
-    std::fs::create_dir_all(history_dir)?;
+    util::fs::create_dir_all(history_dir)?;
 
     // Create HEAD file and point it to DEFAULT_BRANCH_NAME
-    with_ref_writer(&local_repo, |ref_writer| {
-        ref_writer.set_head(constants::DEFAULT_BRANCH_NAME);
+    with_ref_manager(&local_repo, |manager| {
+        manager.set_head(constants::DEFAULT_BRANCH_NAME);
         Ok(())
     })?;
 
@@ -305,11 +308,14 @@ pub fn create(root_dir: &Path, new_repo: RepoNew) -> Result<LocalRepositoryWithE
     })
 }
 
-pub fn delete(repo: LocalRepository) -> Result<LocalRepository, OxenError> {
+pub fn delete(repo: &LocalRepository) -> Result<&LocalRepository, OxenError> {
     if !repo.path.exists() {
         let err = format!("Repository does not exist {:?}", repo.path);
         return Err(OxenError::basic_str(err));
     }
+
+    // Close refs DB before trying to delete the directory
+    core::refs::ref_manager::remove_from_cache(&repo.path)?;
 
     log::debug!("Deleting repo directory: {:?}", repo);
     util::fs::remove_dir_all(&repo.path)?;
@@ -355,6 +361,7 @@ mod tests {
     use crate::model::{Commit, LocalRepository, RepoNew};
     use crate::repositories;
     use crate::test;
+    use crate::util;
     use std::path::{Path, PathBuf};
     use time::OffsetDateTime;
 
@@ -442,7 +449,7 @@ mod tests {
             let name: &str = "cool-repo";
 
             let namespace_dir = sync_dir.join(namespace);
-            std::fs::create_dir_all(&namespace_dir)?;
+            util::fs::create_dir_all(&namespace_dir)?;
             let repo_dir = namespace_dir.join(name);
             repositories::init(&repo_dir)?;
 
@@ -501,7 +508,7 @@ mod tests {
             let namespace = "my-namespace";
             let name = "my-repo";
             let repo_dir = sync_dir.join(namespace).join(name);
-            std::fs::create_dir_all(&repo_dir)?;
+            util::fs::create_dir_all(&repo_dir)?;
 
             let _ = repositories::init(&repo_dir)?;
             let _repo =
@@ -524,7 +531,7 @@ mod tests {
             let initial_commit_id = format!("{}", uuid::Uuid::new_v4());
             let timestamp = OffsetDateTime::now_utc();
             // Create new namespace
-            std::fs::create_dir_all(&new_namespace_dir)?;
+            util::fs::create_dir_all(&new_namespace_dir)?;
 
             let root_commit = Commit {
                 id: initial_commit_id,

@@ -33,7 +33,6 @@ mod tests {
 
     use liboxen::error::OxenError;
     use liboxen::repositories;
-    use liboxen::util;
 
     use crate::controllers;
     use crate::test;
@@ -77,7 +76,8 @@ mod tests {
         let path = path.replace('\\', "/");
         assert_eq!(path, "to/resource");
 
-        util::fs::remove_dir_all(sync_dir)?;
+        // cleanup
+        test::cleanup_sync_dir(&sync_dir)?;
 
         Ok(())
     }

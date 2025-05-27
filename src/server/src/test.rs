@@ -1,5 +1,6 @@
 use crate::app_data::OxenAppData;
 
+use liboxen::core::refs;
 use liboxen::error::OxenError;
 use liboxen::model::LocalRepository;
 use liboxen::repositories;
@@ -20,16 +21,23 @@ pub fn init_test_env() {
 pub fn get_sync_dir() -> Result<PathBuf, OxenError> {
     init_test_env();
     let sync_dir = PathBuf::from(format!("data/test/runs/{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&sync_dir)?;
+    util::fs::create_dir_all(&sync_dir)?;
     Ok(sync_dir)
 }
+
+pub fn cleanup_sync_dir(sync_dir: &Path) -> Result<(), OxenError> {
+    refs::ref_manager::remove_from_cache_with_children(sync_dir)?;
+    std::fs::remove_dir_all(sync_dir)?;
+    Ok(())
+}
+
 pub fn create_local_repo(
     sync_dir: &Path,
     namespace: &str,
     name: &str,
 ) -> Result<LocalRepository, OxenError> {
     let repo_dir = sync_dir.join(namespace).join(name);
-    std::fs::create_dir_all(&repo_dir)?;
+    util::fs::create_dir_all(&repo_dir)?;
     let repo = repositories::init(&repo_dir)?;
     Ok(repo)
 }

@@ -1,4 +1,4 @@
-use crate::constants::{OXEN_HIDDEN_DIR, WORKSPACE_CONFIG};
+use crate::constants::OXEN_HIDDEN_DIR;
 use crate::core;
 use crate::core::versions::MinOxenVersion;
 use crate::error::OxenError;
@@ -38,7 +38,7 @@ pub fn get(
     log::debug!("workspace::get workspace_id: {workspace_id:?} hash: {workspace_id_hash:?}");
 
     let workspace_dir = Workspace::workspace_dir(repo, &workspace_id_hash);
-    let config_path = workspace_dir.join(OXEN_HIDDEN_DIR).join(WORKSPACE_CONFIG);
+    let config_path = Workspace::config_path_from_dir(&workspace_dir);
 
     log::debug!("workspace::get directory: {workspace_dir:?}");
     if config_path.exists() {
@@ -58,7 +58,7 @@ pub fn get_by_dir(
 ) -> Result<Option<Workspace>, OxenError> {
     let workspace_dir = workspace_dir.as_ref();
     let workspace_id = workspace_dir.file_name().unwrap().to_str().unwrap();
-    let config_path = workspace_dir.join(OXEN_HIDDEN_DIR).join(WORKSPACE_CONFIG);
+    let config_path = Workspace::config_path_from_dir(workspace_dir);
 
     if !config_path.exists() {
         log::debug!("workspace::get workspace not found: {:?}", workspace_dir);
@@ -169,15 +169,12 @@ pub fn create_with_name(
     };
 
     // Write the TOML string to WORKSPACE_CONFIG
-    let commit_id_path = workspace_repo
-        .path
-        .join(OXEN_HIDDEN_DIR)
-        .join(WORKSPACE_CONFIG);
+    let workspace_config_path = Workspace::config_path_from_dir(&workspace_dir);
     log::debug!(
         "index::workspaces::create writing workspace config to: {:?}",
-        commit_id_path
+        workspace_config_path
     );
-    util::fs::write_to_path(&commit_id_path, toml_string)?;
+    util::fs::write_to_path(&workspace_config_path, toml_string)?;
 
     Ok(Workspace {
         id: workspace_id.to_owned(),
@@ -327,6 +324,49 @@ pub fn clear(repo: &LocalRepository) -> Result<(), OxenError> {
     }
 
     util::fs::remove_dir_all(&workspaces_dir)?;
+    Ok(())
+}
+
+pub fn update_commit(workspace: &Workspace, new_commit_id: &str) -> Result<(), OxenError> {
+    let config_path = workspace.config_path();
+
+    if !config_path.exists() {
+        log::error!("Workspace config not found: {:?}", config_path);
+        return Err(OxenError::workspace_not_found(workspace.id.clone().into()));
+    }
+
+    let config_contents = util::fs::read_from_path(&config_path)?;
+    let mut config: WorkspaceConfig = toml::from_str(&config_contents).map_err(|e| {
+        log::error!(
+            "Failed to parse workspace config: {:?}, err: {}",
+            config_path,
+            e
+        );
+        OxenError::basic_str(format!("Failed to parse workspace config: {}", e))
+    })?;
+
+    log::debug!(
+        "Updating workspace {} commit from {} to {}",
+        workspace.id,
+        config.workspace_commit_id,
+        new_commit_id
+    );
+    config.workspace_commit_id = new_commit_id.to_string();
+
+    let toml_string = toml::to_string(&config).map_err(|e| {
+        log::error!(
+            "Failed to serialize workspace config to TOML: {:?}, err: {}",
+            config_path,
+            e
+        );
+        OxenError::basic_str(format!(
+            "Failed to serialize workspace config to TOML: {}",
+            e
+        ))
+    })?;
+
+    util::fs::write_to_path(&config_path, toml_string)?;
+
     Ok(())
 }
 
@@ -748,10 +788,20 @@ mod tests {
             // Modify files in each workspace
             util::fs::write_to_path(&file1, "Updated file 1")?;
             util::fs::write_to_path(&file2, "Updated file 2")?;
-            api::client::workspaces::files::post_file(&remote_repo, &workspace1.id, "dir1", file1)
-                .await?;
-            api::client::workspaces::files::post_file(&remote_repo, &workspace2.id, "dir2", file2)
-                .await?;
+            api::client::workspaces::files::upload_single_file(
+                &remote_repo,
+                &workspace1.id,
+                "dir1",
+                file1,
+            )
+            .await?;
+            api::client::workspaces::files::upload_single_file(
+                &remote_repo,
+                &workspace2.id,
+                "dir2",
+                file2,
+            )
+            .await?;
 
             // Create commit bodies
             let commit_body1 = NewCommitBody {
@@ -797,6 +847,79 @@ mod tests {
             assert_ne!(result1.id, result2.id, "Commits should have different IDs");
             assert!(!result1.id.is_empty(), "Commit 1 should have valid ID");
             assert!(!result2.id.is_empty(), "Commit 2 should have valid ID");
+
+            Ok(remote_repo)
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_fully_concurrent_workspace_operations() -> Result<(), OxenError> {
+        // Number of concurrent tasks to run
+        const NUM_TASKS: usize = 20;
+
+        test::run_one_commit_sync_repo_test(|repo, remote_repo| async move {
+            let mut handles = vec![];
+
+            // Spawn NUM_TASKS concurrent tasks
+            for i in 0..NUM_TASKS {
+                let remote_repo = remote_repo.clone();
+                let repo = repo.clone();
+                let handle = tokio::spawn(async move {
+                    // Create a unique branch for this task
+                    let branch_name = format!("branch-{}", i);
+                    api::client::branches::create_from_branch(
+                        &remote_repo,
+                        &branch_name,
+                        DEFAULT_BRANCH_NAME,
+                    )
+                    .await?;
+
+                    // Create workspace from the new branch
+                    let workspace = api::client::workspaces::create(
+                        &remote_repo,
+                        &branch_name,
+                        &format!("workspace-{}", i),
+                    )
+                    .await?;
+
+                    // Add a unique file
+                    let file_path = repo.path.join(format!("file-{}.txt", i));
+                    util::fs::write_to_path(&file_path, format!("content {}", i))?;
+                    api::client::workspaces::files::upload_single_file(
+                        &remote_repo,
+                        &workspace.id,
+                        "",
+                        file_path,
+                    )
+                    .await?;
+
+                    // Commit changes back to the task's branch
+                    let commit_body = NewCommitBody {
+                        message: format!("Commit from task {}", i),
+                        author: "Test Author".to_string(),
+                        email: "test@oxen.ai".to_string(),
+                    };
+
+                    api::client::workspaces::commit(
+                        &remote_repo,
+                        &branch_name,
+                        &workspace.id,
+                        &commit_body,
+                    )
+                    .await?;
+
+                    Ok::<_, OxenError>(())
+                });
+                handles.push(handle);
+            }
+
+            // Wait for all tasks to complete and collect results
+            for handle in handles {
+                handle
+                    .await
+                    .map_err(|e| OxenError::basic_str(format!("Task error: {}", e)))??;
+            }
 
             Ok(remote_repo)
         })

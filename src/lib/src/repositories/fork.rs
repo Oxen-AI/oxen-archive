@@ -204,18 +204,21 @@ mod tests {
 
                 // Fork creates new repo
                 if forked_repo_path.exists() {
-                    std::fs::remove_dir_all(&forked_repo_path)?;
+                    test::maybe_cleanup_repo(&forked_repo_path)?;
                 }
 
                 let dir_path = original_repo_path.join("dir");
                 // Create a workspace directory and add a file to it
-                std::fs::create_dir_all(&dir_path)?;
+                oxen_fs::create_dir_all(&dir_path)?;
                 let file_path = dir_path.join("test_file.txt");
                 std::fs::write(file_path, "test file content")?;
 
                 start_fork(original_repo_path.clone(), forked_repo_path.clone())?;
                 let mut current_status = "in_progress".to_string();
-                while current_status == "in_progress" {
+                let mut attempts = 0;
+                const MAX_ATTEMPTS: u32 = 50; // 5 seconds timeout (50 * 100ms)
+
+                while current_status == "in_progress" && attempts < MAX_ATTEMPTS {
                     tokio::time::sleep(Duration::from_millis(100)).await; // Wait for 100 milliseconds
                     current_status = match get_fork_status(&forked_repo_path) {
                         Ok(status) => status.status,
@@ -227,14 +230,20 @@ mod tests {
                             }
                         }
                     };
+                    attempts += 1;
                 }
+
+                if attempts >= MAX_ATTEMPTS {
+                    return Err(OxenError::basic_str("Fork operation timed out"));
+                }
+
                 let file_path = original_repo_path.clone().join("dir/test_file.txt");
 
                 assert!(forked_repo_path.exists());
                 // Verify that the content of .oxen/config.toml is the same in both repos
                 let new_file_path = forked_repo_path.join("dir/test_file.txt");
                 let original_content = fs::read_to_string(&file_path)?;
-                let mut retries = 20;
+                let mut retries = 10;
                 let mut sleep_time = 100;
                 let new_content = loop {
                     if new_file_path.exists() {
@@ -262,9 +271,9 @@ mod tests {
                     .join("forked")
                     .join(Uuid::new_v4().to_string());
                 if new_repo_path_1.exists() {
-                    std::fs::remove_dir_all(&new_repo_path_1)?;
+                    test::maybe_cleanup_repo(&new_repo_path_1)?;
                 }
-                std::fs::create_dir_all(&new_repo_path_1)?;
+                oxen_fs::create_dir_all(&new_repo_path_1)?;
 
                 let result = start_fork(original_repo_path.clone(), new_repo_path_1.clone());
                 assert!(
@@ -281,13 +290,15 @@ mod tests {
 
                 let workspaces_path = original_repo_path.join(".oxen/workspaces");
                 // Create a workspace directory and add a file to it
-                std::fs::create_dir_all(&workspaces_path)?;
+                oxen_fs::create_dir_all(&workspaces_path)?;
                 let workspace_file = workspaces_path.join("test_workspace.txt");
                 std::fs::write(workspace_file, "test workspace content")?;
 
                 start_fork(original_repo_path.clone(), new_repo_path_2.clone())?;
                 let mut current_status = "in_progress".to_string();
-                while current_status == "in_progress" {
+                let mut attempts = 0;
+
+                while current_status == "in_progress" && attempts < MAX_ATTEMPTS {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     current_status = match get_fork_status(&new_repo_path_2) {
                         Ok(status) => status.status,
@@ -301,7 +312,13 @@ mod tests {
                             }
                         }
                     };
+                    attempts += 1;
                 }
+
+                if attempts >= MAX_ATTEMPTS {
+                    return Err(OxenError::basic_str("Fork operation timed out"));
+                }
+
                 // Check that the new repository exists
                 assert!(new_repo_path_2.clone().exists());
 
@@ -311,6 +328,8 @@ mod tests {
                     !new_workspaces_path.exists(),
                     ".oxen/workspaces should not be copied"
                 );
+
+                test::maybe_cleanup_repo(&new_repo_path_2)?;
                 // Get prefix of new repo path 2 for cleanup
                 let new_repo_path_2_prefix = new_repo_path_2.parent().unwrap();
                 if new_repo_path_2_prefix.exists() {

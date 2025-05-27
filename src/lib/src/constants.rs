@@ -11,8 +11,6 @@ pub const OXEN_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const OXEN_HIDDEN_DIR: &str = ".oxen";
 /// Folder name for oxen home within `.cache`, `.config`., etc.
 pub const OXEN: &str = "oxen";
-/// ~/.cache/oxen holds tmp downloads
-pub const TMP_DIR: &str = ".cache";
 /// ~/.config/oxen holds config files
 pub const CONFIG_DIR: &str = ".config";
 /// .oxenignore is the name of the file that contains the ignore patterns
@@ -214,3 +212,6 @@ pub const LAST_MIGRATION_FILE: &str = "last_migration.txt";
 
 /// Constraints for diff and compare size
 pub const MAX_DISPLAY_DIRS: usize = 10;
+
+/// Default notebook base image
+pub const DEFAULT_NOTEBOOK_BASE_IMAGE: &str = "debian:bookworm-slim";

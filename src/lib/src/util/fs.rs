@@ -46,9 +46,14 @@ pub fn oxen_hidden_dir(repo_path: impl AsRef<Path>) -> PathBuf {
 }
 
 pub fn oxen_tmp_dir() -> Result<PathBuf, OxenError> {
-    match dirs::home_dir() {
-        Some(home_dir) => Ok(home_dir.join(constants::TMP_DIR).join(constants::OXEN)),
-        None => Err(OxenError::home_dir_not_found()),
+    // Override the cache dir with the OXEN_TMP_DIR env var if it is set
+    if let Ok(tmp_dir) = std::env::var("OXEN_TMP_DIR") {
+        return Ok(PathBuf::from(tmp_dir));
+    }
+
+    match dirs::cache_dir() {
+        Some(cache_dir) => Ok(cache_dir.join(constants::OXEN)),
+        None => Err(OxenError::cache_dir_not_found()),
     }
 }
 
@@ -355,9 +360,7 @@ pub fn write_to_path(path: impl AsRef<Path>, value: impl AsRef<str>) -> Result<(
 
     // Make sure the parent directory exists
     if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            create_dir_all(parent)?;
-        }
+        create_dir_all(parent)?;
     }
 
     match File::create(path) {
@@ -568,7 +571,7 @@ pub fn list_files_in_dir(dir: &Path) -> Vec<PathBuf> {
     match std::fs::read_dir(dir) {
         Ok(paths) => {
             for path in paths.flatten() {
-                if util::fs::metadata(path.path()).unwrap().is_file() {
+                if path.path().is_file() {
                     files.push(path.path());
                 }
             }
@@ -674,9 +677,9 @@ pub fn copy_dir_all(from: impl AsRef<Path>, to: impl AsRef<Path>) -> Result<(), 
         } else {
             output_root.join(&src)
         };
-        if util::fs::metadata(&dest).is_err() {
+        if !dest.exists() {
             // log::debug!("copy_dir_all  mkdir: {:?}", dest);
-            std::fs::create_dir_all(&dest)?;
+            util::fs::create_dir_all(&dest)?;
         }
 
         for entry in std::fs::read_dir(working_path)? {
@@ -804,8 +807,13 @@ pub fn file_exists_in_directory(directory: impl AsRef<Path>, file: impl AsRef<Pa
     false
 }
 
-/// Wrapper around the std::fs::create_dir_all command to tell us which file it failed on
+/// Wrapper around the util::fs::create_dir_all command to tell us which file it failed on
+/// creates a directory if they don't exist
 pub fn create_dir_all(src: impl AsRef<Path>) -> Result<(), OxenError> {
+    if src.as_ref().exists() {
+        return Ok(());
+    }
+
     let src = src.as_ref();
     match std::fs::create_dir_all(src) {
         Ok(_) => Ok(()),
@@ -859,7 +867,7 @@ pub fn metadata(path: impl AsRef<Path>) -> Result<std::fs::Metadata, OxenError> 
     match std::fs::metadata(path) {
         Ok(file) => Ok(file),
         Err(err) => {
-            log::error!("metadata {:?} {}", path, err);
+            log::debug!("metadata {:?} {}", path, err);
             Err(OxenError::file_metadata_error(path, err))
         }
     }
@@ -877,7 +885,10 @@ pub fn file_create(path: impl AsRef<Path>) -> Result<std::fs::File, OxenError> {
     }
 }
 
-pub fn is_tabular_from_extension(data_path: &Path, file_path: &Path) -> bool {
+/// Looks at both the extension and the first bytes of the file to determine if it is tabular
+pub fn is_tabular_from_extension(data_path: impl AsRef<Path>, file_path: impl AsRef<Path>) -> bool {
+    let data_path = data_path.as_ref();
+    let file_path = file_path.as_ref();
     if has_ext(file_path, "json") {
         // check if the first character in the file is '['
         // if so it is just a json array we can treat as tabular
@@ -888,6 +899,12 @@ pub fn is_tabular_from_extension(data_path: &Path, file_path: &Path) -> bool {
         }
     }
 
+    has_tabular_extension(file_path)
+}
+
+/// Looks at the extension of the file to determine if it is tabular
+pub fn has_tabular_extension(file_path: impl AsRef<Path>) -> bool {
+    let file_path = file_path.as_ref();
     let exts: HashSet<String> = vec!["csv", "tsv", "parquet", "arrow", "ndjson", "jsonl"]
         .into_iter()
         .map(String::from)
@@ -1540,7 +1557,7 @@ pub fn resize_cache_image(
 
     let resize_parent = resize_path.parent().unwrap_or(Path::new(""));
     if !resize_parent.exists() {
-        std::fs::create_dir_all(resize_parent).unwrap();
+        util::fs::create_dir_all(resize_parent).unwrap();
     }
 
     resized_img.save(resize_path).unwrap();
@@ -1695,6 +1712,20 @@ mod tests {
 
         let relative = util::fs::path_relative_to_dir(file, dir)?;
         assert_eq!(relative, Path::new("other").join("dir"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn path_relative_to_unrelated_dir() -> Result<(), OxenError> {
+        let file = Path::new("data").join("test").join("other").join("dir");
+        let dir = Path::new("some").join("repo");
+
+        let relative = util::fs::path_relative_to_dir(file, dir)?;
+        assert_eq!(
+            relative,
+            Path::new("data").join("test").join("other").join("dir")
+        );
 
         Ok(())
     }

@@ -118,5 +118,5 @@ pub async fn complete(req: HttpRequest, body: String) -> Result<HttpResponse, Ox
 }
 
 pub async fn create(_req: HttpRequest, _body: String) -> Result<HttpResponse, OxenHttpError> {
-    return Ok(HttpResponse::Ok().json(StatusMessage::resource_found()));
+    Ok(HttpResponse::Ok().json(StatusMessage::resource_found()))
 }

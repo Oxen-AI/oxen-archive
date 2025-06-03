@@ -53,6 +53,7 @@ sanitize-filename = "0.6.0"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.78"
 tar = "0.4.44"
+tempfile = "3.8.0"
 time = { version = "0.3.20", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7.8"

@@ -227,6 +227,8 @@ pub async fn download_tree_nodes(
     let unique_node_hashes =
         get_unique_node_hashes(&repository, &commits, &subtrees, &query.depth, is_download)?;
 
+    log::debug!("unique_node_hashes: {:?}", unique_node_hashes);
+
     let buffer = repositories::tree::compress_nodes(&repository, &unique_node_hashes)?;
     let total_size: u64 = u64::try_from(buffer.len()).unwrap_or(u64::MAX);
     log::debug!(
@@ -280,6 +282,7 @@ fn get_unique_node_hashes(
         maybe_subtrees
     );
     for commit in commits {
+        log::debug!("Getting unique node hashes for commit: {:?}", commit.id);
         if let Some(subtrees) = maybe_subtrees {
             // Traverse up the tree to get all the parent directories
             let mut all_parent_paths: Vec<PathBuf> = Vec::new();
@@ -347,9 +350,20 @@ fn get_unique_node_hashes_for_subtree(
         return Ok(());
     };
 
+    log::debug!(
+        "Walking tree for subtree: {:?} nodes before: {}",
+        subtree_path,
+        unique_node_hashes.len()
+    );
     tree.walk_tree_without_leaves(|node| {
+        log::debug!("Inserting {:?} node: {:?}", subtree_path, node.hash);
         unique_node_hashes.insert(node.hash);
     });
+    log::debug!(
+        "Walking tree for subtree: {:?} nodes after: {}",
+        subtree_path,
+        unique_node_hashes.len()
+    );
 
     Ok(())
 }

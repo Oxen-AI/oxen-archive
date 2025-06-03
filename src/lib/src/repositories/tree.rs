@@ -136,18 +136,42 @@ pub fn has_path(
     commit: &Commit,
     path: impl AsRef<Path>,
 ) -> Result<bool, OxenError> {
+    log::debug!("has_path: {:?}", path.as_ref());
     let path = path.as_ref();
     let dir_hashes = repositories::tree::dir_hashes(repo, commit)?;
+    // log::debug!("dir_hashes: {:?}", dir_hashes);
     match dir_hashes.get(path) {
         Some(dir_hash) => {
-            let node = get_node_by_id_with_children(repo, dir_hash)?.unwrap();
-            Ok(node.get_by_path(path)?.is_some())
-        }
-        None => {
-            let parent = path.parent().unwrap();
-            if let Some(parent_hash) = dir_hashes.get(parent) {
-                let node = get_node_by_id_with_children(repo, parent_hash)?.unwrap();
+            // log::debug!("has_path: {:?} found dir_hash: {:?}", path, dir_hash);
+            let Some(node) = get_node_by_id_with_children(repo, dir_hash)? else {
+                // log::warn!("has_path: {:?} not found", path);
+                return Ok(false);
+            };
+
+            // If we have the node, and it is a directory, return true
+            if node.is_dir() {
+                Ok(true)
+            } else {
                 Ok(node.get_by_path(path)?.is_some())
+            }
+        }
+        // Look up file, because directory does not exist
+        None => {
+            let Some(parent) = path.parent() else {
+                // No parent, does not exist.
+                return Ok(false);
+            };
+
+            // Look up parent
+            if let Some(parent_hash) = dir_hashes.get(parent) {
+                let Some(node) = get_node_by_id_with_children(repo, parent_hash)? else {
+                    // log::warn!("has_path: {:?} not found", path);
+                    return Ok(false);
+                };
+
+                let file_name = util::fs::path_relative_to_dir(path, parent)?;
+                // log::debug!("has_path: looking for file {:?} from parent {:?} hash: {:?}", file_name, parent, parent_hash);
+                Ok(node.get_by_path(file_name)?.is_some())
             } else {
                 Ok(false)
             }

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::constants::{AVG_CHUNK_SIZE, OXEN_HIDDEN_DIR};
+use crate::constants::AVG_CHUNK_SIZE;
 use crate::core;
 use crate::core::refs::with_ref_manager;
 use crate::error::OxenError;
@@ -170,6 +170,7 @@ async fn sync_from_head(
             &head_commit.id,
             &branch.commit_id,
             &repo_hidden_dir,
+            &fetch_opts.subtree_paths,
         )
         .await?;
     } else {
@@ -204,6 +205,7 @@ async fn sync_tree_from_commit(
         remote_repo,
         commit_id.as_ref(),
         &repo_hidden_dir,
+        &fetch_opts.subtree_paths,
     )
     .await?;
     Ok(())
@@ -269,83 +271,6 @@ fn collect_missing_entries_for_subtree(
             last_modified_nanoseconds: file.file_node.last_modified_nanoseconds(),
         }));
     }
-    Ok(())
-}
-
-pub async fn fetch_tree_and_hashes_for_commit_id(
-    repo: &LocalRepository,
-    remote_repo: &RemoteRepository,
-    commit_id: &str,
-) -> Result<(), OxenError> {
-    let repo_hidden_dir = repo.path.join(OXEN_HIDDEN_DIR);
-    api::client::commits::download_dir_hashes_db_to_path(remote_repo, commit_id, &repo_hidden_dir)
-        .await?;
-
-    let hash = MerkleHash::from_str(commit_id)?;
-    api::client::tree::download_tree_from(repo, remote_repo, &hash).await?;
-
-    api::client::commits::download_dir_hashes_from_commit(remote_repo, commit_id, &repo_hidden_dir)
-        .await?;
-
-    Ok(())
-}
-
-pub async fn fetch_full_tree_and_hashes(
-    repo: &LocalRepository,
-    remote_repo: &RemoteRepository,
-    remote_branch: &Branch,
-) -> Result<(), OxenError> {
-    // Download the latest merkle tree
-    // Must do this before downloading the commit node
-    // because the commit node references the merkle tree
-    let repo_hidden_dir = repo.path.join(OXEN_HIDDEN_DIR);
-    api::client::commits::download_dir_hashes_db_to_path(
-        remote_repo,
-        &remote_branch.commit_id,
-        &repo_hidden_dir,
-    )
-    .await?;
-
-    // Download the latest merkle tree
-    // let hash = MerkleHash::from_str(&remote_branch.commit_id)?;
-    api::client::tree::download_tree(repo, remote_repo).await?;
-    // let commit_node = CommitMerkleTree::read_node(repo, &hash, true)?.unwrap();
-
-    // Download the commit history
-    // Check what our HEAD commit is locally
-    if let Some(head_commit) = repositories::commits::head_commit_maybe(repo)? {
-        // Remote is not guaranteed to have our head commit
-        // If it doesn't, we will download all commits from the remote branch commit
-        if api::client::tree::has_node(remote_repo, MerkleHash::from_str(&head_commit.id)?).await? {
-            // Download the commits between the head commit and the remote branch commit
-            let base_commit_id = head_commit.id;
-            let head_commit_id = &remote_branch.commit_id;
-
-            api::client::commits::download_base_head_dir_hashes(
-                remote_repo,
-                &base_commit_id,
-                head_commit_id,
-                &repo_hidden_dir,
-            )
-            .await?;
-        } else {
-            // Download the dir hashes from the remote branch commit
-            api::client::commits::download_dir_hashes_from_commit(
-                remote_repo,
-                &remote_branch.commit_id,
-                &repo_hidden_dir,
-            )
-            .await?;
-        }
-    } else {
-        // Download the dir hashes from the remote branch commit
-        api::client::commits::download_dir_hashes_from_commit(
-            remote_repo,
-            &remote_branch.commit_id,
-            &repo_hidden_dir,
-        )
-        .await?;
-    };
     Ok(())
 }
 

@@ -6,6 +6,8 @@ use liboxen::constants::HISTORY_DIR;
 use liboxen::constants::VERSION_FILE_NAME;
 
 use liboxen::core::commit_sync_status;
+use liboxen::core::db;
+use liboxen::core::db::key_val::kv_db;
 use liboxen::error::OxenError;
 use liboxen::model::{Commit, LocalRepository};
 use liboxen::opts::PaginateOpts;
@@ -19,12 +21,15 @@ use liboxen::view::{
     StatusMessage,
 };
 use os_path::OsPath;
+use rocksdb::{DBWithThreadMode, MultiThreaded};
+use tempfile;
 
 use crate::app_data::OxenAppData;
 use crate::errors::OxenHttpError;
 use crate::helpers::get_repo;
 use crate::params::parse_resource;
 use crate::params::PageNumQuery;
+use crate::params::SubtreeQuery;
 use crate::params::{app_data, path_param};
 
 use actix_web::{web, Error, HttpRequest, HttpResponse};
@@ -276,6 +281,7 @@ fn compress_commits_db(repository: &LocalRepository) -> Result<Vec<u8>, OxenErro
 /// Download the database of all entries given a specific commit
 pub async fn download_dir_hashes_db(
     req: HttpRequest,
+    query: web::Query<SubtreeQuery>,
 ) -> actix_web::Result<HttpResponse, OxenHttpError> {
     let app_data = app_data(&req)?;
     let namespace = path_param(&req, "namespace")?;
@@ -306,7 +312,8 @@ pub async fn download_dir_hashes_db(
     } else {
         repositories::commits::list_from(&repository, &base_head)?
     };
-    let buffer = compress_commits(&repository, &commits)?;
+    let subtrees = get_subtree_paths(&query.subtrees)?;
+    let buffer = compress_commits(&repository, &commits, &subtrees)?;
 
     Ok(HttpResponse::Ok().body(buffer))
 }
@@ -332,6 +339,7 @@ pub async fn download_commit_entries_db(
 fn compress_commits(
     repository: &LocalRepository,
     commits: &[Commit],
+    subtrees: &Option<Vec<PathBuf>>,
 ) -> Result<Vec<u8>, OxenError> {
     // Tar and gzip all the commit dir_hashes db directories
     let enc = GzEncoder::new(Vec::new(), Compression::default());
@@ -352,7 +360,48 @@ fn compress_commits(
             let full_path = commit_dir.join(dir);
             let tar_path = tar_subdir.join(dir);
             if full_path.exists() {
-                tar.append_dir_all(&tar_path, full_path)?;
+                // Create a temporary directory to store filtered database
+                let temp_dir = tempfile::Builder::new()
+                    .prefix("oxen_filtered_db_")
+                    .tempdir()?;
+                let temp_db_path = temp_dir.path().join(dir);
+                util::fs::create_dir_all(&temp_db_path)?;
+
+                // Copy the database to temp directory
+                util::fs::copy_dir_all(&full_path, &temp_db_path)?;
+
+                // Open the database in read-write mode
+                let opts = db::key_val::opts::default();
+                let db: DBWithThreadMode<MultiThreaded> =
+                    DBWithThreadMode::open(&opts, dunce::simplified(&temp_db_path))?;
+
+                // If subtrees are specified, filter the database entries
+                if let Some(subtrees) = subtrees {
+                    // Get all keys in the database
+                    let keys = kv_db::list_keys(&db)?;
+
+                    // For each key, check if it's a child of any subtree
+                    for key in keys {
+                        let path = PathBuf::from(&key);
+                        let mut is_child = false;
+
+                        // Check if this path is a child of any subtree
+                        for subtree in subtrees {
+                            if path.starts_with(subtree) {
+                                is_child = true;
+                                break;
+                            }
+                        }
+
+                        // If not a child of any subtree, delete it
+                        if !is_child {
+                            kv_db::delete(&db, &key)?;
+                        }
+                    }
+                }
+
+                // Add the filtered database to the tarball
+                tar.append_dir_all(&tar_path, temp_db_path)?;
             }
         }
     }
@@ -955,6 +1004,25 @@ fn extract_hash_from_path(path: &Path) -> Result<String, OxenError> {
         "Could not get hash for file: {:?}",
         path
     )))
+}
+
+fn get_subtree_paths(subtrees: &Option<String>) -> Result<Option<Vec<PathBuf>>, OxenError> {
+    if let Some(subtrees) = subtrees {
+        Ok(Some(
+            subtrees
+                .split(',')
+                .map(|s| {
+                    if "." == s {
+                        PathBuf::from("")
+                    } else {
+                        PathBuf::from(s)
+                    }
+                })
+                .collect(),
+        ))
+    } else {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

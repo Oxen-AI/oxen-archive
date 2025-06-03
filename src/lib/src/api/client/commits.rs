@@ -295,12 +295,30 @@ pub async fn root_commit_maybe(
     }
 }
 
+/// Helper function to append subtrees parameter to a URI if subtrees are provided
+fn append_subtrees_to_uri(uri: String, subtrees: &Option<Vec<PathBuf>>) -> String {
+    if let Some(subtrees) = subtrees {
+        format!(
+            "{uri}?subtrees={}",
+            subtrees
+                .iter()
+                .map(|s| s.to_string_lossy().to_string())
+                .collect::<Vec<String>>()
+                .join(",")
+        )
+    } else {
+        uri
+    }
+}
+
 pub async fn download_dir_hashes_from_commit(
     remote_repo: &RemoteRepository,
     commit_id: &str,
     path: impl AsRef<Path>,
+    subtrees: &Option<Vec<PathBuf>>,
 ) -> Result<PathBuf, OxenError> {
     let uri = format!("/commits/{commit_id}/download_dir_hashes_db");
+    let uri = append_subtrees_to_uri(uri, subtrees);
     let url = api::endpoint::url_from_repo(remote_repo, &uri)?;
     log::debug!(
         "calling download_dir_hashes_from_commit for commit {}",
@@ -314,13 +332,16 @@ pub async fn download_base_head_dir_hashes(
     base_commit_id: &str,
     head_commit_id: &str,
     path: impl AsRef<Path>,
+    subtrees: &Option<Vec<PathBuf>>,
 ) -> Result<PathBuf, OxenError> {
     let uri = format!("/commits/{base_commit_id}..{head_commit_id}/download_dir_hashes_db");
+    let uri = append_subtrees_to_uri(uri, subtrees);
     let url = api::endpoint::url_from_repo(remote_repo, &uri)?;
     log::debug!(
-        "calling download_base_head_dir_hashes for commits {}..{}",
+        "calling download_base_head_dir_hashes for commits {}..{} with uri {}",
         base_commit_id,
-        head_commit_id
+        head_commit_id,
+        uri
     );
     download_dir_hashes_from_url(url, path).await
 }

@@ -26,6 +26,9 @@ pub use page_num_query::PageNumVersionQuery;
 pub mod df_opts_query;
 pub use df_opts_query::DFOptsQuery;
 
+pub mod subtree_query;
+pub use subtree_query::SubtreeQuery;
+
 pub mod tree_depth;
 pub use tree_depth::TreeDepthQuery;
 

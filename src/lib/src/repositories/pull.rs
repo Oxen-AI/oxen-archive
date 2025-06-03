@@ -1932,7 +1932,74 @@ mod tests {
                 )
                 .await?;
 
-                // 6. Pull from main
+                // 6. Pull from branch1
+                repositories::pull_remote_branch(
+                    &repo,
+                    &FetchOpts {
+                        remote: constants::DEFAULT_REMOTE_NAME.to_string(),
+                        branch: branch_name.to_string(),
+                        all: false,
+                        subtree_paths: Some(vec![PathBuf::from("train")]),
+                        depth: None,
+                        ..FetchOpts::new()
+                    },
+                )
+                .await?;
+
+                // Verify the state after pull
+                assert!(repo.path.join("train").exists());
+                assert!(repo.path.join("dir1").join("newfile.txt").exists());
+
+                Ok(repo_dir)
+            })
+            .await?;
+
+            Ok(remote_repo_copy)
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_subtree_clone_branch_main_push_pull_does_nothing() -> Result<(), OxenError> {
+        // Push the Remote Repo
+        test::run_training_data_fully_sync_remote(|_, remote_repo| async move {
+            let remote_repo_copy = remote_repo.clone();
+            test::run_empty_dir_test_async(|repo_dir| async move {
+                let repo_dir = repo_dir.join("subtree_repo");
+
+                // 1. Clone repo with subtree filter
+                let mut clone_opts = CloneOpts::new(&remote_repo.remote.url, &repo_dir);
+                clone_opts.fetch_opts.subtree_paths = Some(vec![PathBuf::from("train")]);
+                // clone_opts.fetch_opts.depth = Some(1);
+                let repo = repositories::clone(&clone_opts).await?;
+
+                // Verify we only have the subtree
+                assert!(repo.path.join("train").exists());
+                assert!(!repo.path.join("test").exists());
+
+                // 2. Create and checkout new branch
+                let branch_name = "branch1";
+                repositories::branches::create_checkout(&repo, branch_name)?;
+
+                // 3. Add new file in dir1
+                let dir1 = repo.path.join("dir1");
+                util::fs::create_dir_all(&dir1)?;
+                let new_file = dir1.join("newfile.txt");
+                test::write_txt_file_to_path(&new_file, "This is a new file")?;
+
+                // 4. Add and commit the new file
+                repositories::add(&repo, &new_file)?;
+                repositories::commit(&repo, "Adding new file in dir1")?;
+
+                // 5. Push to origin branch1
+                repositories::push::push_remote_branch(
+                    &repo,
+                    constants::DEFAULT_REMOTE_NAME,
+                    branch_name,
+                )
+                .await?;
+
+                // 6. Pull from main, should be noop
                 repositories::pull_remote_branch(
                     &repo,
                     &FetchOpts {
@@ -1955,6 +2022,122 @@ mod tests {
             .await?;
 
             Ok(remote_repo_copy)
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_multiple_subtree_pulls_correct_number_of_nodes() -> Result<(), OxenError> {
+        // Push the Remote Repo
+        test::run_training_data_fully_sync_remote(|_, remote_repo| async move {
+            let remote_repo_1 = remote_repo.clone();
+
+            // Two users clone the repo and work with the annotations/train subtree
+            test::run_empty_dir_test_async(|train_repo_dir| async move {
+                // Clone "annotations/train" into two different subtree repos
+                let train_repo_dir_1 = train_repo_dir.join("train_subtree_repo_1");
+                let train_repo_dir_2 = train_repo_dir.join("train_subtree_repo_2");
+
+                println!("Clone 1: {}", train_repo_dir_1.display());
+
+                // Clone repo with train subtree filter for first user
+                let mut clone_opts_1 =
+                    CloneOpts::new(remote_repo_1.remote.url.clone(), &train_repo_dir_1);
+                clone_opts_1.fetch_opts.subtree_paths =
+                    Some(vec![PathBuf::from("annotations").join("train")]);
+                let train_repo_1 = repositories::clone(&clone_opts_1).await?;
+
+                println!("Clone 2: {}", train_repo_dir_2.display());
+                // Clone repo with train subtree filter for second user
+                let mut clone_opts_2 =
+                    CloneOpts::new(remote_repo_1.remote.url.clone(), &train_repo_dir_2);
+                clone_opts_2.fetch_opts.subtree_paths =
+                    Some(vec![PathBuf::from("annotations").join("train")]);
+                let train_repo_2 = repositories::clone(&clone_opts_2).await?;
+
+                println!("Checking that both repos only have the train subtree");
+                // Verify both repos only have the train subtree
+                assert!(train_repo_1.path.join("annotations").join("train").exists());
+                assert!(!train_repo_1.path.join("annotations").join("test").exists());
+                assert!(train_repo_2.path.join("annotations").join("train").exists());
+                assert!(!train_repo_2.path.join("annotations").join("test").exists());
+                assert!(!train_repo_1.path.join("prompts.jsonl").exists());
+                assert!(!train_repo_2.path.join("prompts.jsonl").exists());
+
+                // Load the merkle tree and make sure we downloaded the correct subtree
+                let head_commit = repositories::commits::head_commit(&train_repo_1)?;
+                assert!(
+                    !(repositories::tree::has_path(&train_repo_1, &head_commit, "train")?)
+                );
+                assert!(
+                    repositories::tree::has_path(
+                        &train_repo_1,
+                        &head_commit,
+                        PathBuf::from("annotations").join("train")
+                    )?
+                );
+                assert!(
+                    repositories::tree::has_path(
+                        &train_repo_1,
+                        &head_commit,
+                        PathBuf::from("annotations")
+                            .join("train")
+                            .join("bounding_box.csv")
+                    )?
+                );
+                let head_commit = repositories::commits::head_commit(&train_repo_2)?;
+                assert!(
+                    !(repositories::tree::has_path(&train_repo_2, &head_commit, "test")?)
+                );
+                assert!(
+                    repositories::tree::has_path(
+                        &train_repo_2,
+                        &head_commit,
+                        PathBuf::from("annotations").join("train")
+                    )?
+                );
+                assert!(
+                    repositories::tree::has_path(
+                        &train_repo_2,
+                        &head_commit,
+                        PathBuf::from("annotations")
+                            .join("train")
+                            .join("bounding_box.csv")
+                    )?
+                );
+
+                println!("Adding new file to train_repo_1");
+                // First user adds a new file
+                let new_file_path = train_repo_1
+                    .path
+                    .join("annotations")
+                    .join("train")
+                    .join("new_data.csv");
+                test::write_txt_file_to_path(&new_file_path, "image,label\n1.jpg,dog\n2.jpg,cat")?;
+                repositories::add(&train_repo_1, &new_file_path)?;
+                repositories::commit(&train_repo_1, "Adding new training data")?;
+                repositories::push(&train_repo_1).await?;
+
+                println!("Pulling changes to train_repo_2");
+                // Second user pulls the changes
+                repositories::pull(&train_repo_2).await?;
+
+                println!("Verifying that the second user now has the new file");
+                // Verify the second user now has the new file
+                let pulled_file_path = train_repo_2
+                    .path
+                    .join("annotations")
+                    .join("train")
+                    .join("new_data.csv");
+                assert!(pulled_file_path.exists());
+                let contents = util::fs::read_from_path(&pulled_file_path)?;
+                assert_eq!(contents, "image,label\n1.jpg,dog\n2.jpg,cat");
+
+                Ok(train_repo_dir)
+            })
+            .await?;
+
+            Ok(remote_repo)
         })
         .await
     }

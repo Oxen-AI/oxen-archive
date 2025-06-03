@@ -185,7 +185,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_clone_root_subtree_depth_1() -> Result<(), OxenError> {
+    async fn test_clone_subtree_depth_1() -> Result<(), OxenError> {
         test::run_training_data_fully_sync_remote(|_local_repo, remote_repo| async move {
             let cloned_remote = remote_repo.clone();
             test::run_empty_dir_test_async(|dir| async move {

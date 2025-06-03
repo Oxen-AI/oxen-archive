@@ -60,6 +60,7 @@ pub async fn pull_remote_branch(
             previous_head_commit.id,
             new_head_commit.id
         );
+        // TODO: Check if is parent, not if is equal
         if previous_head_commit.id != new_head_commit.id {
             match repositories::merge::merge_commit_into_base(
                 repo,

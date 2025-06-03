@@ -257,7 +257,7 @@ impl CommitMerkleTree {
         hash: &MerkleHash,
         recurse: bool,
     ) -> Result<Option<MerkleTreeNode>, OxenError> {
-        // log::debug!("Read node hash [{}]", hash);
+        log::debug!("Read node hash [{}]", hash);
         if !MerkleNodeDB::exists(repo, hash) {
             // log::debug!("read_node merkle node db does not exist for hash: {}", hash);
             return Ok(None);
@@ -266,7 +266,7 @@ impl CommitMerkleTree {
         let mut node = MerkleTreeNode::from_hash(repo, hash)?;
         let mut node_db = MerkleNodeDB::open_read_only(repo, hash)?;
         CommitMerkleTree::read_children_from_node(repo, &mut node_db, &mut node, recurse)?;
-        // log::debug!("read_node done: {:?} recurse: {}", node.hash, recurse);
+        log::debug!("read_node done: {:?} recurse: {}", node.hash, recurse);
         Ok(Some(node))
     }
 
@@ -700,18 +700,18 @@ impl CommitMerkleTree {
         }
 
         let children: Vec<(MerkleHash, MerkleTreeNode)> = node_db.map()?;
-        // log::debug!("read_children_from_node Got {} children", children.len());
+        log::debug!("read_children_from_node Got {} children", children.len());
 
-        for (_key, child) in children {
+        for (key, child) in children {
             let mut child = child.to_owned();
-            // log::debug!("read_children_from_node child: {} -> {}", key, child);
+            log::debug!("read_children_from_node child: {} -> {}", key, child);
             match &child.node.node_type() {
                 // Directories, VNodes, and Files have children
                 MerkleTreeNodeType::Commit
                 | MerkleTreeNodeType::Dir
                 | MerkleTreeNodeType::VNode => {
                     if recurse {
-                        // log::debug!("read_children_from_node recurse: {:?}", child.hash);
+                        log::debug!("read_children_from_node recurse: {:?}", child.hash);
                         let Ok(mut node_db) = MerkleNodeDB::open_read_only(repo, &child.hash)
                         else {
                             log::warn!("no child node db: {:?}", child.hash);

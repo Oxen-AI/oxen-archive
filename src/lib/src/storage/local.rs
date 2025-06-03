@@ -123,7 +123,7 @@ impl VersionStore for LocalVersionStore {
 
     fn copy_version_to_path(&self, hash: &str, dest_path: &Path) -> Result<(), OxenError> {
         let version_path = self.version_path(hash);
-        fs::copy(&version_path, dest_path)?;
+        util::fs::copy(&version_path, dest_path)?;
         Ok(())
     }
 

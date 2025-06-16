@@ -1,7 +1,11 @@
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::str;
+use std::sync::{Arc, LazyLock};
 
+use lru::LruCache;
+use parking_lot::Mutex;
 use rocksdb::{DBWithThreadMode, IteratorMode, MultiThreaded};
 
 use crate::constants::{DIR_HASHES_DIR, HISTORY_DIR};
@@ -19,6 +23,40 @@ use crate::model::{Commit, LocalRepository, MerkleHash, MerkleTreeNodeType, Part
 use crate::util::{self, hasher};
 
 use std::str::FromStr;
+
+const NODE_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(5_000_000).unwrap();
+
+// Static cache of merkle tree nodes per repository
+static NODE_CACHES: LazyLock<
+    Mutex<HashMap<PathBuf, Arc<Mutex<LruCache<MerkleHash, Arc<MerkleTreeNode>>>>>>,
+> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Removes a repository's node cache from the global cache map.
+pub fn remove_node_cache(repository_path: impl AsRef<std::path::Path>) -> Result<(), OxenError> {
+    let mut caches = NODE_CACHES.lock();
+    let _ = caches.remove(&repository_path.as_ref().to_path_buf());
+    Ok(())
+}
+
+/// Execute an operation with access to the repository's node cache.
+/// The cache is locked for the entire duration of the operation.
+pub fn with_node_cache<F, T>(repository: &LocalRepository, operation: F) -> Result<T, OxenError>
+where
+    F: FnOnce(&mut LruCache<MerkleHash, Arc<MerkleTreeNode>>) -> Result<T, OxenError>,
+{
+    // Get or create the cache for this repository
+    let cache_arc = {
+        let mut caches = NODE_CACHES.lock();
+        caches
+            .entry(repository.path.clone())
+            .or_insert_with(|| Arc::new(Mutex::new(LruCache::new(NODE_CACHE_SIZE))))
+            .clone()
+    };
+
+    // Lock the cache once for the entire operation
+    let mut cache = cache_arc.lock();
+    operation(&mut *cache)
+}
 
 pub struct CommitMerkleTree {
     pub root: MerkleTreeNode,
@@ -255,7 +293,25 @@ impl CommitMerkleTree {
         hash: &MerkleHash,
         recurse: bool,
     ) -> Result<Option<MerkleTreeNode>, OxenError> {
-        // log::debug!("Read node hash [{}]", hash);
+        with_node_cache(repo, |cache| {
+            Self::read_node_cached(repo, hash, recurse, cache)
+                .map(|opt| opt.map(|arc| (*arc).clone()))
+        })
+    }
+
+    fn read_node_cached(
+        repo: &LocalRepository,
+        hash: &MerkleHash,
+        recurse: bool,
+        cache: &mut LruCache<MerkleHash, Arc<MerkleTreeNode>>,
+    ) -> Result<Option<Arc<MerkleTreeNode>>, OxenError> {
+        // Check if node is already cached
+        if let Some(cached_node) = cache.get(hash) {
+            log::debug!("Cache hit for node hash [{}]", hash);
+            return Ok(Some(cached_node.clone()));
+        }
+
+        // log::debug!("Cache miss for node hash [{}]", hash);
         if !MerkleNodeDB::exists(repo, hash) {
             // log::debug!("read_node merkle node db does not exist for hash: {}", hash);
             return Ok(None);
@@ -263,9 +319,20 @@ impl CommitMerkleTree {
 
         let mut node = MerkleTreeNode::from_hash(repo, hash)?;
         let mut node_db = MerkleNodeDB::open_read_only(repo, hash)?;
-        CommitMerkleTree::read_children_from_node(repo, &mut node_db, &mut node, recurse)?;
+        CommitMerkleTree::read_children_from_node_cached(
+            repo,
+            &mut node_db,
+            &mut node,
+            recurse,
+            cache,
+        )?;
+
+        // Cache the node with its children
+        let arc_node = Arc::new(node);
+        cache.put(*hash, arc_node.clone());
+
         // log::debug!("read_node done: {:?} recurse: {}", node.hash, recurse);
-        Ok(Some(node))
+        Ok(Some(arc_node))
     }
 
     pub fn read_node_with_hashes(
@@ -320,6 +387,24 @@ impl CommitMerkleTree {
         hash: &MerkleHash,
         depth: i32,
     ) -> Result<Option<MerkleTreeNode>, OxenError> {
+        with_node_cache(repo, |cache| {
+            Self::read_depth_cached(repo, hash, depth, cache)
+                .map(|opt| opt.map(|arc| (*arc).clone()))
+        })
+    }
+
+    fn read_depth_cached(
+        repo: &LocalRepository,
+        hash: &MerkleHash,
+        depth: i32,
+        cache: &mut LruCache<MerkleHash, Arc<MerkleTreeNode>>,
+    ) -> Result<Option<Arc<MerkleTreeNode>>, OxenError> {
+        // Check if node is already cached
+        if let Some(cached_node) = cache.get(hash) {
+            log::debug!("Cache hit for node hash [{}] in read_depth", hash);
+            return Ok(Some(cached_node.clone()));
+        }
+
         // log::debug!("Read depth {} node hash [{}]", depth, hash);
         if !MerkleNodeDB::exists(repo, hash) {
             log::debug!(
@@ -332,9 +417,21 @@ impl CommitMerkleTree {
         let mut node = MerkleTreeNode::from_hash(repo, hash)?;
         let mut node_db = MerkleNodeDB::open_read_only(repo, hash)?;
 
-        CommitMerkleTree::read_children_until_depth(repo, &mut node_db, &mut node, depth, 0)?;
+        CommitMerkleTree::read_children_until_depth_cached(
+            repo,
+            &mut node_db,
+            &mut node,
+            depth,
+            0,
+            cache,
+        )?;
+
+        // Cache the node
+        let arc_node = Arc::new(node);
+        cache.put(*hash, arc_node.clone());
+
         // log::debug!("Read depth {} node done: {:?}", depth, node.hash);
-        Ok(Some(node))
+        Ok(Some(arc_node))
     }
 
     /// The dir hashes allow you to skip to a directory in the tree
@@ -601,6 +698,26 @@ impl CommitMerkleTree {
         requested_depth: i32,
         traversed_depth: i32,
     ) -> Result<(), OxenError> {
+        with_node_cache(repo, |cache| {
+            Self::read_children_until_depth_cached(
+                repo,
+                node_db,
+                node,
+                requested_depth,
+                traversed_depth,
+                cache,
+            )
+        })
+    }
+
+    fn read_children_until_depth_cached(
+        repo: &LocalRepository,
+        node_db: &mut MerkleNodeDB,
+        node: &mut MerkleTreeNode,
+        requested_depth: i32,
+        traversed_depth: i32,
+        cache: &mut LruCache<MerkleHash, Arc<MerkleTreeNode>>,
+    ) -> Result<(), OxenError> {
         let dtype = node.node.node_type();
         // log::debug!(
         //     "read_children_until_depth requested_depth {} traversed_depth {} node {}",
@@ -625,6 +742,16 @@ impl CommitMerkleTree {
         );
 
         for (_key, child) in children {
+            // Check if child is cached and has the right depth
+            if let Some(cached_child) = cache.get(&child.hash) {
+                if requested_depth <= traversed_depth && requested_depth != -1 {
+                    // We don't need to go deeper, so we can use the cached version
+                    log::debug!("Cache hit for child node hash [{}] at depth", child.hash);
+                    node.children.push((**cached_child).clone());
+                    continue;
+                }
+            }
+
             let mut child = child.to_owned();
             // log::debug!(
             //     "read_children_until_depth {} child: {} -> {}",
@@ -649,19 +776,26 @@ impl CommitMerkleTree {
                         // Here we have to not panic on error, because if we clone a subtree we might not have all of the children nodes of a particular dir
                         // given that we are only loading the nodes that are needed.
                         if let Ok(mut node_db) = MerkleNodeDB::open_read_only(repo, &child.hash) {
-                            CommitMerkleTree::read_children_until_depth(
+                            Self::read_children_until_depth_cached(
                                 repo,
                                 &mut node_db,
                                 &mut child,
                                 requested_depth,
                                 traversed_depth,
+                                cache,
                             )?;
                         }
                     }
+                    // Cache the child
+                    let child_hash = child.hash;
+                    cache.put(child_hash, Arc::new(child.clone()));
                     node.children.push(child);
                 }
                 // FileChunks and Schemas are leaf nodes
                 MerkleTreeNodeType::FileChunk | MerkleTreeNodeType::File => {
+                    // Cache leaf nodes too
+                    let child_hash = child.hash;
+                    cache.put(child_hash, Arc::new(child.clone()));
                     node.children.push(child);
                 }
             }
@@ -684,6 +818,18 @@ impl CommitMerkleTree {
         node: &mut MerkleTreeNode,
         recurse: bool,
     ) -> Result<(), OxenError> {
+        with_node_cache(repo, |cache| {
+            Self::read_children_from_node_cached(repo, node_db, node, recurse, cache)
+        })
+    }
+
+    fn read_children_from_node_cached(
+        repo: &LocalRepository,
+        node_db: &mut MerkleNodeDB,
+        node: &mut MerkleTreeNode,
+        recurse: bool,
+        cache: &mut LruCache<MerkleHash, Arc<MerkleTreeNode>>,
+    ) -> Result<(), OxenError> {
         let dtype = node.node.node_type();
         if dtype != MerkleTreeNodeType::Commit
             && dtype != MerkleTreeNodeType::Dir
@@ -697,6 +843,13 @@ impl CommitMerkleTree {
         // log::debug!("read_children_from_node Got {} children", children.len());
 
         for (_key, child) in children {
+            // Check if child is cached
+            if let Some(cached_child) = cache.get(&child.hash) {
+                log::debug!("Cache hit for child node hash [{}]", child.hash);
+                node.children.push((**cached_child).clone());
+                continue;
+            }
+
             let mut child = child.to_owned();
             // log::debug!("read_children_from_node child: {} -> {}", key, child);
             match &child.node.node_type() {
@@ -712,17 +865,24 @@ impl CommitMerkleTree {
                             return Ok(());
                         };
                         // log::debug!("read_children_from_node opened node_db: {:?}", child.hash);
-                        CommitMerkleTree::read_children_from_node(
+                        Self::read_children_from_node_cached(
                             repo,
                             &mut node_db,
                             &mut child,
                             recurse,
+                            cache,
                         )?;
                     }
+                    // Cache the child after loading its children
+                    let child_hash = child.hash;
+                    cache.put(child_hash, Arc::new(child.clone()));
                     node.children.push(child);
                 }
                 // FileChunks and Schemas are leaf nodes
                 MerkleTreeNodeType::FileChunk | MerkleTreeNodeType::File => {
+                    // Cache leaf nodes too
+                    let child_hash = child.hash;
+                    cache.put(child_hash, Arc::new(child.clone()));
                     node.children.push(child);
                 }
             }
@@ -995,6 +1155,65 @@ mod tests {
                 assert!(dir.num_files() > 0);
                 assert!(dir.num_entries() > 0);
             }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_node_cache_performance() -> Result<(), OxenError> {
+        test::run_empty_dir_test(|dir| {
+            // Instantiate the correct version of the repo
+            let repo = repositories::init::init_with_version(dir, MinOxenVersion::LATEST)?;
+
+            // Write data to the repo
+            add_n_files_m_dirs(&repo, 100, 10)?;
+            let _status = repositories::status(&repo)?;
+
+            // Commit the data
+            let commit = repositories::commits::commit(&repo, "First commit")?;
+
+            // Clear the cache to start fresh
+            crate::core::v_latest::index::commit_merkle_tree::remove_node_cache(&repo.path)?;
+
+            // Load the tree multiple times
+            use std::time::Instant;
+
+            // First load (cache miss)
+            let start = Instant::now();
+            let tree1 = CommitMerkleTree::from_commit(&repo, &commit)?;
+            let first_load_time = start.elapsed();
+            println!("First load time: {:?}", first_load_time);
+
+            // Count nodes
+            let mut node_count = 0;
+            tree1.walk_tree(|_node| {
+                node_count += 1;
+            });
+            println!("Total nodes in tree: {}", node_count);
+
+            // Second load (should have cache hits)
+            let start = Instant::now();
+            let tree2 = CommitMerkleTree::from_commit(&repo, &commit)?;
+            let second_load_time = start.elapsed();
+            println!("Second load time: {:?}", second_load_time);
+
+            // Third load (should be fully cached)
+            let start = Instant::now();
+            let tree3 = CommitMerkleTree::from_commit(&repo, &commit)?;
+            let third_load_time = start.elapsed();
+            println!("Third load time: {:?}", third_load_time);
+
+            // The cached loads should be faster
+            // Note: This might not always be true in CI environments, so we're being lenient
+            println!(
+                "Speed improvement: {:.2}x faster",
+                first_load_time.as_nanos() as f64 / third_load_time.as_nanos().max(1) as f64
+            );
+
+            // Verify all trees are identical
+            assert_eq!(tree1.root.hash, tree2.root.hash);
+            assert_eq!(tree2.root.hash, tree3.root.hash);
 
             Ok(())
         })

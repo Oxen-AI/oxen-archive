@@ -1624,6 +1624,7 @@ pub fn maybe_cleanup_repo(repo_dir: &Path) -> Result<(), OxenError> {
         log::debug!("maybe_cleanup_repo: cleaning up repo: {:?}", repo_dir);
         // Close refs DB before trying to delete the directory
         core::refs::ref_manager::remove_from_cache_with_children(repo_dir)?;
+        core::v_latest::index::commit_merkle_tree::remove_node_cache(repo_dir)?;
         util::fs::remove_dir_all(repo_dir)?;
     } else {
         log::debug!("maybe_cleanup_repo: *NOT* cleaning up repo: {:?}", repo_dir);

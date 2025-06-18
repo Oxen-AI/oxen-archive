@@ -1,6 +1,7 @@
 use crate::app_data::OxenAppData;
 
 use liboxen::core::refs;
+use liboxen::core::v_latest::index;
 use liboxen::error::OxenError;
 use liboxen::model::LocalRepository;
 use liboxen::repositories;
@@ -26,6 +27,7 @@ pub fn get_sync_dir() -> Result<PathBuf, OxenError> {
 }
 
 pub fn cleanup_sync_dir(sync_dir: &Path) -> Result<(), OxenError> {
+    index::commit_merkle_tree::remove_node_cache(sync_dir)?;
     refs::ref_manager::remove_from_cache_with_children(sync_dir)?;
     std::fs::remove_dir_all(sync_dir)?;
     Ok(())

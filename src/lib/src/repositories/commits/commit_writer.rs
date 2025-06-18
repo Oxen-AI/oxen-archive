@@ -641,22 +641,30 @@ fn split_into_vnodes(
                     match child.status {
                         StagedEntryStatus::Removed => {
                             log::debug!(
-                                "removing child {:?} {:?} with {:?}",
+                                "removing child {:?} at {:?} [{}]",
                                 child.node.node.node_type(),
                                 path,
-                                child.node.maybe_path().unwrap()
+                                child.node.hash
                             );
                             children.remove(child);
                         }
                         _ => {
-                            log::debug!(
-                                "replacing child {:?} {:?} with {:?}",
-                                child.node.node.node_type(),
-                                path,
-                                child.node.maybe_path().unwrap()
-                            );
-                            log::debug!("replaced child {}", child.node);
-                            children.replace(child.clone());
+                            if let Some(replaced) = children.replace(child.clone()) {
+                                log::debug!(
+                                    "replaced child {:?} at {:?} [{}] with {}",
+                                    child.node.node.node_type(),
+                                    path,
+                                    replaced.node.hash,
+                                    child.node.hash,
+                                );
+                            } else {
+                                log::debug!(
+                                    "add child {:?} at {:?} with {}",
+                                    child.node.node.node_type(),
+                                    path,
+                                    child.node.hash
+                                );
+                            }
                         }
                     }
                 }
@@ -1099,6 +1107,8 @@ fn compute_dir_node(
                             entry.status
                         );
                         hasher.update(dir_node.name().as_bytes());
+                        // TODO: the hash of the dir node has probably not been computed yet here - is this a problem?
+                        // probably not breaking because if this dir was updated it had a hash before and now it's zero
                         hasher.update(&dir_node.hash().to_le_bytes());
                     }
                     EMerkleTreeNode::File(file_node) => {

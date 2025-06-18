@@ -1618,13 +1618,15 @@ fn add_all_data_to_repo(repo: &LocalRepository) -> Result<(), OxenError> {
 
 // This function conditionally removes the repo dir given a CLEANUP_REPOS environment variable
 pub fn maybe_cleanup_repo(repo_dir: &Path) -> Result<(), OxenError> {
+    // Always remove the node cache
+    core::v_latest::index::commit_merkle_tree::remove_node_cache(repo_dir)?;
+
     let no_cleanup = std::env::var("NO_CLEANUP") == Ok("true".to_string())
         || std::env::var("NO_CLEANUP") == Ok("1".to_string());
     if !no_cleanup {
         log::debug!("maybe_cleanup_repo: cleaning up repo: {:?}", repo_dir);
         // Close refs DB before trying to delete the directory
         core::refs::ref_manager::remove_from_cache_with_children(repo_dir)?;
-        core::v_latest::index::commit_merkle_tree::remove_node_cache(repo_dir)?;
         util::fs::remove_dir_all(repo_dir)?;
     } else {
         log::debug!("maybe_cleanup_repo: *NOT* cleaning up repo: {:?}", repo_dir);

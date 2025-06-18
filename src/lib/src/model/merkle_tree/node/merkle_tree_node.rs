@@ -802,49 +802,7 @@ impl Default for MerkleTreeNode {
 /// Display is used for single line output with println!("{}", node)
 impl fmt::Display for MerkleTreeNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.node {
-            EMerkleTreeNode::Commit(commit) => {
-                write!(f, "[{:?}] {} {}", self.node.node_type(), self.hash, commit)
-            }
-            EMerkleTreeNode::VNode(vnode) => {
-                write!(
-                    f,
-                    "[{:?}] {} {} ({} entries)",
-                    self.node.node_type(),
-                    self.hash.to_short_str(),
-                    vnode,
-                    vnode.num_entries()
-                )
-            }
-            EMerkleTreeNode::Directory(dir) => {
-                write!(
-                    f,
-                    "[{:?}] {} {} ({} entries)",
-                    self.node.node_type(),
-                    self.hash.to_short_str(),
-                    dir,
-                    dir.num_entries()
-                )
-            }
-            EMerkleTreeNode::File(file) => {
-                write!(
-                    f,
-                    "[{:?}] {} {}",
-                    self.node.node_type(),
-                    self.hash.to_short_str(),
-                    file
-                )
-            }
-            EMerkleTreeNode::FileChunk(file_chunk) => {
-                write!(
-                    f,
-                    "[{:?}] {} {}",
-                    self.node.node_type(),
-                    self.hash.to_short_str(),
-                    file_chunk
-                )
-            }
-        }
+        self.node.fmt(f)
     }
 }
 

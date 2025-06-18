@@ -305,7 +305,7 @@ pub fn get_subtree(
     }
 }
 
-/// Given a set of paths, will return a map of the path to the FileNode or DirNode
+/// Given a set of paths, will return a map of the directory paths to its DirNode, if it exists
 pub fn list_nodes_from_paths(
     repo: &LocalRepository,
     commit: &Commit,
@@ -1340,6 +1340,7 @@ pub fn print_tree_depth(
 
 #[cfg(test)]
 mod tests {
+    use crate::core::v_latest::index::CommitMerkleTree;
     use crate::error::OxenError;
     use crate::opts::RmOpts;
     use crate::repositories;
@@ -1447,6 +1448,10 @@ mod tests {
             assert!(status.staged_files.contains_key(&PathBuf::from(p2)));
 
             let commit = repositories::commit(&local_repo, "add two files")?;
+
+            // Read the merkle tree
+            let tree = CommitMerkleTree::from_commit(&local_repo, &commit)?;
+            tree.print();
 
             assert!(repositories::tree::has_path(
                 &local_repo,
@@ -1558,6 +1563,79 @@ mod tests {
                 "Depth filter should return 6 hashes, got {}",
                 depth_limited_hashes.len()
             );
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_list_nodes_from_paths() -> Result<(), OxenError> {
+        test::run_local_repo_training_data_committed(|repo| {
+            // Get the head commit to work with
+            let commit = repositories::commits::head_commit(&repo)?;
+
+            let paths = vec![
+                PathBuf::from(""),
+                PathBuf::from("train"),
+                PathBuf::from("fake_dir"),
+                PathBuf::from("train/dog_1.jpg"),
+                PathBuf::from("train/cat_2.jpg"),
+            ];
+
+            // Call the function
+            let nodes = super::list_nodes_from_paths(&repo, &commit, &paths)?;
+
+            for (path, node) in &nodes {
+                println!("\n############# node: {:?} {}", path, node);
+                CommitMerkleTree::print_node(&node);
+            }
+
+            // Verify we got nodes for all existing paths
+            assert!(nodes.contains_key(&PathBuf::from("")));
+            assert!(nodes.contains_key(&PathBuf::from("train")));
+
+            // Verify non-existent paths are not in the result
+            assert!(!nodes.contains_key(&PathBuf::from("test"))); // test dir was removed
+            assert!(!nodes.contains_key(&PathBuf::from("test/1.jpg"))); // file in removed dir
+            assert!(!nodes.contains_key(&PathBuf::from("fake_dir"))); // non-existent dir
+
+            // Verify the types of some nodes
+            let train_dir_node = &nodes[&PathBuf::from("train")];
+            assert_eq!(
+                train_dir_node.node.node_type(),
+                crate::model::MerkleTreeNodeType::Dir
+            );
+
+            // Verify directory nodes have expected properties
+            if let crate::model::merkle_tree::node::EMerkleTreeNode::Directory(dir_node) =
+                &train_dir_node.node
+            {
+                assert_eq!(dir_node.name(), "train");
+                assert!(dir_node.num_files() == 5);
+            } else {
+                panic!("Expected train to be a directory node");
+            }
+
+            // Verify the children files are populated correctly
+            let children = CommitMerkleTree::node_files_and_folders(train_dir_node)?;
+
+            assert_eq!(children.len(), 5, "should have 5 children");
+
+            let dog_1_file = train_dir_node
+                .get_by_path("dog_1.jpg")?
+                .expect("dog_1.jpg not found");
+            assert_eq!(
+                dog_1_file.node.node_type(),
+                crate::model::MerkleTreeNodeType::File
+            );
+            assert_eq!(
+                dog_1_file.file().expect("should be a file node").name(),
+                "dog_1.jpg"
+            );
+
+            let _cat_2_file = train_dir_node
+                .get_by_path("cat_2.jpg")?
+                .expect("cat_2.jpg not found");
 
             Ok(())
         })

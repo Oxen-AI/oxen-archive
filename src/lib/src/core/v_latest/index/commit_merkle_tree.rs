@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::str;
@@ -24,7 +25,7 @@ use crate::util::{self, hasher};
 
 use std::str::FromStr;
 
-const NODE_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(5_000_000).unwrap();
+const NODE_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(20_000_000).unwrap();
 
 /// Metadata about a cached node including how deeply it was loaded
 #[derive(Clone)]
@@ -35,7 +36,7 @@ struct CachedNode {
     parent_id: Option<MerkleHash>,
     /// Hashes of child nodes (for reconstruction)
     child_hashes: Vec<MerkleHash>,
-    /// Depth to which this node was loaded (-1 for recursive, 0 for no children)
+    /// Depth to which this node's children were loaded (-1 for recursive, 0 for no children)
     loaded_depth: i32,
     /// Whether this node was loaded recursively
     is_recursive: bool,
@@ -65,6 +66,16 @@ impl CachedNode {
             return true;
         }
         self.loaded_depth >= requested_depth
+    }
+}
+
+impl fmt::Display for CachedNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{} [depth {} | recursive {}]",
+            self.node, self.loaded_depth, self.is_recursive
+        )
     }
 }
 
@@ -352,7 +363,7 @@ impl CommitMerkleTree {
         let cached_info = cache.get(hash).cloned();
 
         let mut node = if let Some(cached_node) = cached_info {
-            log::debug!("Cache hit for node hash [{}]", hash);
+            log::debug!("Cache hit: {}", cached_node);
 
             // Check if cached version satisfies our requirements
             if cached_node.satisfies_depth(requested_depth, recurse) {
@@ -382,15 +393,20 @@ impl CommitMerkleTree {
             MerkleTreeNode::from_hash(repo, hash)?
         };
 
-        // Load children
-        let mut node_db = MerkleNodeDB::open_read_only(repo, hash)?;
-        CommitMerkleTree::read_children_from_node_cached(
-            repo,
-            &mut node_db,
-            &mut node,
-            recurse,
-            cache,
-        )?;
+        if node.is_leaf() {
+            log::debug!("Node {} is a leaf node, skipping child loading", hash);
+        } else {
+            // Load children if not a leaf node
+            log::debug!("Loading children for node {}", hash);
+            let mut node_db = MerkleNodeDB::open_read_only(repo, hash)?;
+            CommitMerkleTree::read_children_from_node_cached(
+                repo,
+                &mut node_db,
+                &mut node,
+                recurse,
+                cache,
+            )?;
+        }
 
         // Cache the node with its children
         log::debug!("caching node {}", &node);
@@ -416,11 +432,17 @@ impl CommitMerkleTree {
         };
 
         // Reconstruct children if needed
-        if requested_depth != 0 {
+        // depth >= 0 means load at least immediate children
+        // depth == -1 means recursive
+        // We never use -2 in practice, so always reconstruct some children
+        if requested_depth == -1 || requested_depth >= 0 {
             let child_hashes = cached.child_hashes.clone();
             for child_hash in child_hashes {
                 let child_depth = if requested_depth == -1 {
                     -1
+                } else if node.node.node_type() == MerkleTreeNodeType::Dir {
+                    // When reconstructing, we don't decrement here so we correctly load the VNodes
+                    requested_depth
                 } else {
                     requested_depth - 1
                 };
@@ -500,6 +522,8 @@ impl CommitMerkleTree {
         Ok(Some(node))
     }
 
+    /// Read the node at the given depth
+    /// If depth is 0, we load the node and its immediate children
     pub fn read_depth(
         repo: &LocalRepository,
         hash: &MerkleHash,
@@ -521,7 +545,7 @@ impl CommitMerkleTree {
         let cached_info = cache.get(hash).cloned();
 
         let mut node = if let Some(cached_node) = cached_info {
-            log::debug!("Cache hit for node hash [{}] in read_depth", hash);
+            log::debug!("Cache hit: {}", cached_node);
 
             // Check if cached version satisfies our requirements
             if cached_node.satisfies_depth(depth, false) {
@@ -555,16 +579,21 @@ impl CommitMerkleTree {
             MerkleTreeNode::from_hash(repo, hash)?
         };
 
-        // Load children to requested depth
-        let mut node_db = MerkleNodeDB::open_read_only(repo, hash)?;
-        CommitMerkleTree::read_children_until_depth_cached(
-            repo,
-            &mut node_db,
-            &mut node,
-            depth,
-            0,
-            cache,
-        )?;
+        if node.is_leaf() {
+            log::debug!("Node {} is a leaf node, skipping child loading", hash);
+        } else {
+            log::debug!("Loading children for node {}", hash);
+            // Load children to requested depth
+            let mut node_db = MerkleNodeDB::open_read_only(repo, hash)?;
+            CommitMerkleTree::read_children_until_depth_cached(
+                repo,
+                &mut node_db,
+                &mut node,
+                depth,
+                0,
+                cache,
+            )?;
+        }
 
         // Cache the node
         log::debug!("caching node {} at depth {}", &node, depth);
@@ -830,25 +859,6 @@ impl CommitMerkleTree {
         vnode_with_children.get_by_path(file_name)
     }
 
-    fn read_children_until_depth(
-        repo: &LocalRepository,
-        node_db: &mut MerkleNodeDB,
-        node: &mut MerkleTreeNode,
-        requested_depth: i32,
-        traversed_depth: i32,
-    ) -> Result<(), OxenError> {
-        with_node_cache(repo, |cache| {
-            Self::read_children_until_depth_cached(
-                repo,
-                node_db,
-                node,
-                requested_depth,
-                traversed_depth,
-                cache,
-            )
-        })
-    }
-
     fn read_children_until_depth_cached(
         repo: &LocalRepository,
         node_db: &mut MerkleNodeDB,
@@ -885,7 +895,7 @@ impl CommitMerkleTree {
             if let Some(cached_child) = cache.get(&child.hash).cloned() {
                 if cached_child.satisfies_depth(requested_depth - traversed_depth, false) {
                     // We don't need to go deeper, so we can use the cached version
-                    log::debug!("Cache hit for child node hash [{}] at depth", child.hash);
+                    log::debug!("Child node cache hit: {}", cached_child);
                     let reconstructed = Self::reconstruct_from_cache(
                         repo,
                         &cached_child,
@@ -900,6 +910,11 @@ impl CommitMerkleTree {
 
             let mut child = child.to_owned();
             // log::debug!(
+            //     "Processing child: {} (type: {:?})",
+            //     child,
+            //     child.node.node_type()
+            // );
+            // log::debug!(
             //     "read_children_until_depth {} child: {} -> {}",
             //     depth,
             //     key,
@@ -910,15 +925,14 @@ impl CommitMerkleTree {
                 MerkleTreeNodeType::Commit
                 | MerkleTreeNodeType::Dir
                 | MerkleTreeNodeType::VNode => {
-                    if requested_depth > traversed_depth || requested_depth == -1 {
-                        // Depth that is passed in is the number of dirs to traverse
-                        // VNodes should not increase the depth
-                        let traversed_depth = if child.node.node_type() == MerkleTreeNodeType::VNode
-                        {
-                            traversed_depth
-                        } else {
-                            traversed_depth + 1
-                        };
+                    // Calculate the depth at which this child should be cached
+                    let child_depth = if child.node.node_type() == MerkleTreeNodeType::VNode {
+                        traversed_depth
+                    } else {
+                        traversed_depth + 1
+                    };
+
+                    if requested_depth >= traversed_depth || requested_depth == -1 {
                         // Here we have to not panic on error, because if we clone a subtree we might not have all of the children nodes of a particular dir
                         // given that we are only loading the nodes that are needed.
                         if let Ok(mut node_db) = MerkleNodeDB::open_read_only(repo, &child.hash) {
@@ -927,27 +941,32 @@ impl CommitMerkleTree {
                                 &mut node_db,
                                 &mut child,
                                 requested_depth,
-                                traversed_depth,
+                                child_depth,
                                 cache,
                             )?;
                         }
                     }
-                    // Cache the child
+                    // Cache the child with the correct depth
+                    // The depth stored is how deeply the child's children were loaded
+                    let children_loaded_depth =
+                        if requested_depth > child_depth || requested_depth == -1 {
+                            requested_depth - child_depth
+                        } else {
+                            0
+                        };
                     let child_hash = child.hash;
                     cache.put(
                         child_hash,
-                        CachedNode::from_tree_node(&child, traversed_depth, false),
+                        CachedNode::from_tree_node(&child, children_loaded_depth, false),
                     );
                     node.children.push(child);
                 }
                 // FileChunks and Schemas are leaf nodes
                 MerkleTreeNodeType::FileChunk | MerkleTreeNodeType::File => {
                     // Cache leaf nodes too
+                    // Leaf nodes have no children, so loaded_depth is 0
                     let child_hash = child.hash;
-                    cache.put(
-                        child_hash,
-                        CachedNode::from_tree_node(&child, traversed_depth, false),
-                    );
+                    cache.put(child_hash, CachedNode::from_tree_node(&child, 0, false));
                     node.children.push(child);
                 }
             }
@@ -962,17 +981,6 @@ impl CommitMerkleTree {
 
     pub fn walk_tree_without_leaves(&self, f: impl FnMut(&MerkleTreeNode)) {
         self.root.walk_tree_without_leaves(f);
-    }
-
-    fn read_children_from_node(
-        repo: &LocalRepository,
-        node_db: &mut MerkleNodeDB,
-        node: &mut MerkleTreeNode,
-        recurse: bool,
-    ) -> Result<(), OxenError> {
-        with_node_cache(repo, |cache| {
-            Self::read_children_from_node_cached(repo, node_db, node, recurse, cache)
-        })
     }
 
     fn read_children_from_node_cached(
@@ -997,7 +1005,7 @@ impl CommitMerkleTree {
         for (_key, child) in children {
             // Check if child is cached
             if let Some(cached_child) = cache.get(&child.hash).cloned() {
-                log::debug!("Cache hit for child node hash [{}]", child.hash);
+                log::debug!("Child node cache hit: {}", &cached_child);
                 let depth = if recurse { -1 } else { 0 };
                 let reconstructed =
                     Self::reconstruct_from_cache(repo, &cached_child, depth, recurse, cache)?;
@@ -1008,7 +1016,7 @@ impl CommitMerkleTree {
             let mut child = child.to_owned();
             // log::debug!("read_children_from_node child: {} -> {}", key, child);
             match &child.node.node_type() {
-                // Directories, VNodes, and Files have children
+                // Directories, VNodes, and Commits have children
                 MerkleTreeNodeType::Commit
                 | MerkleTreeNodeType::Dir
                 | MerkleTreeNodeType::VNode => {
@@ -1070,7 +1078,7 @@ impl CommitMerkleTree {
             let mut child = child.to_owned();
             // log::debug!("load_children_with_hashes child: {} -> {}", key, child);
             match &child.node.node_type() {
-                // Directories, VNodes, and Files have children
+                // Directories, VNodes, and Commits have children
                 MerkleTreeNodeType::Commit
                 | MerkleTreeNodeType::Dir
                 | MerkleTreeNodeType::VNode => {
@@ -1129,7 +1137,7 @@ impl CommitMerkleTree {
             let mut child = child.to_owned();
             // log::debug!("load_unique_children child: {} -> {}", key, child);
             match &child.node.node_type() {
-                // Directories, VNodes, and Files have children
+                // Directories, VNodes, and Commits have children
                 MerkleTreeNodeType::Commit
                 | MerkleTreeNodeType::Dir
                 | MerkleTreeNodeType::VNode => {
@@ -1514,6 +1522,342 @@ mod tests {
             );
 
             println!("\nCache depth-aware loading is working correctly!");
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_read_leaf_node_directly() -> Result<(), OxenError> {
+        test::run_empty_dir_test(|dir| {
+            // Instantiate the correct version of the repo
+            let repo = repositories::init::init_with_version(dir, MinOxenVersion::LATEST)?;
+
+            // Write a simple file
+            let file_path = repo.path.join("test.txt");
+            std::fs::write(&file_path, "test content")?;
+
+            // Add and commit
+            repositories::add(&repo, &file_path)?;
+            let commit = repositories::commits::commit(&repo, "Test commit")?;
+
+            // Load the tree to get the file node
+            let tree = CommitMerkleTree::from_commit(&repo, &commit)?;
+
+            // Find the file node in the tree
+            let mut file_hash = None;
+            tree.walk_tree(|node| {
+                if let EMerkleTreeNode::File(file_node) = &node.node {
+                    if file_node.name() == "test.txt" {
+                        file_hash = Some(node.hash);
+                        println!("Found file node: {}", node);
+                        println!("File hash: {}", node.hash);
+                    }
+                }
+            });
+
+            let file_hash = file_hash.expect("Should find test.txt in tree");
+
+            // Clear the cache to ensure we're testing disk loading
+            crate::core::v_latest::index::commit_merkle_tree::remove_node_cache(&repo.path)?;
+
+            // Try to read the file node directly - this should fail or return None
+            // because file nodes don't have their own database files
+            println!("\nTrying to read file node directly...");
+            let result = CommitMerkleTree::read_node(&repo, &file_hash, false);
+
+            match result {
+                Ok(None) => {
+                    println!("Correctly returned None for leaf node");
+                    // This is expected - leaf nodes don't have their own DB files
+                }
+                Ok(Some(node)) => {
+                    println!("Unexpectedly loaded node: {}", node);
+                    // This would indicate the node was cached or loaded somehow
+                    panic!("Should not be able to load leaf node directly from disk");
+                }
+                Err(e) => {
+                    println!("Got error trying to load leaf node: {}", e);
+                    // This is also acceptable - indicates the DB doesn't exist
+                }
+            }
+
+            // Now demonstrate the correct way: load the parent and access the file
+            println!("\nLoading parent directory to access file...");
+            let root_with_children =
+                CommitMerkleTree::root_with_children(&repo, &commit)?.expect("Root should exist");
+
+            // Find the file node through its parent
+            let mut found_file = false;
+            root_with_children.walk_tree(|node| {
+                if let EMerkleTreeNode::File(file_node) = &node.node {
+                    if file_node.name() == "test.txt" {
+                        found_file = true;
+                        println!("Found file through parent: {}", node);
+                    }
+                }
+            });
+
+            assert!(found_file, "Should find file when loading through parent");
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_cache_leaf_node_handling() -> Result<(), OxenError> {
+        test::run_empty_dir_test(|dir| {
+            let repo = repositories::init::init_with_version(dir, MinOxenVersion::LATEST)?;
+
+            // Create a directory structure with files
+            let subdir = repo.path.join("subdir");
+            std::fs::create_dir(&subdir)?;
+            std::fs::write(repo.path.join("file1.txt"), "content1")?;
+            std::fs::write(subdir.join("file2.txt"), "content2")?;
+
+            repositories::add(&repo, &repo.path)?;
+            let commit = repositories::commits::commit(&repo, "Test commit")?;
+
+            // Clear cache to ensure clean test
+            crate::core::v_latest::index::commit_merkle_tree::remove_node_cache(&repo.path)?;
+
+            // Load the tree recursively - this should trigger caching of all nodes
+            println!("Loading tree recursively...");
+            let tree = CommitMerkleTree::from_commit(&repo, &commit)?;
+
+            // Find a file node hash
+            let mut file_hash = None;
+            tree.walk_tree(|node| {
+                if let EMerkleTreeNode::File(file_node) = &node.node {
+                    if file_node.name() == "file1.txt" {
+                        file_hash = Some(node.hash);
+                        println!(
+                            "Found file node: {} with hash {}",
+                            file_node.name(),
+                            node.hash
+                        );
+                    }
+                }
+            });
+            let file_hash = file_hash.expect("Should find file1.txt");
+
+            // Now try to load just this file node from cache
+            // This should work because it's cached, even though it doesn't have a DB
+            println!("\nTrying to read cached file node...");
+            let cached_result = CommitMerkleTree::read_node(&repo, &file_hash, true)?;
+
+            if let Some(node) = cached_result {
+                println!("Successfully loaded file node from cache: {}", node);
+                assert!(matches!(node.node, EMerkleTreeNode::File(_)));
+            } else {
+                panic!("Failed to load file node from cache");
+            }
+
+            // Clear cache and try again - should fail
+            println!("\nClearing cache and trying again...");
+            crate::core::v_latest::index::commit_merkle_tree::remove_node_cache(&repo.path)?;
+
+            let uncached_result = CommitMerkleTree::read_node(&repo, &file_hash, false)?;
+            assert!(
+                uncached_result.is_none(),
+                "Should not be able to load uncached file node"
+            );
+
+            // Test that we don't try to open DB for cached leaf nodes when reconstructing
+            println!("\nTesting reconstruction with leaf nodes...");
+
+            // // First, load a directory with its files
+            // let _subdir_tree = CommitMerkleTree::from_path_recursive(&repo, &commit, "subdir")?;
+
+            // Now clear cache and load the directory without children
+            crate::core::v_latest::index::commit_merkle_tree::remove_node_cache(&repo.path)?;
+
+            let _dir_with_children = CommitMerkleTree::dir_with_children(&repo, &commit, "")?;
+            println!("loaded dir with children (depth 1)");
+
+            // Load with children - this should use cache and not try to open DBs for files
+            let dir_with_children_recursive =
+                CommitMerkleTree::dir_with_children_recursive(&repo, &commit, "")?;
+            assert!(dir_with_children_recursive.is_some());
+
+            // Verify the structure
+            let dir_node = dir_with_children_recursive.unwrap();
+            CommitMerkleTree::print_node_depth(&dir_node, 2);
+
+            // Count file nodes
+            let mut file_count = 0;
+            dir_node.walk_tree(|node| {
+                if matches!(node.node, EMerkleTreeNode::File(_)) {
+                    file_count += 1;
+                }
+            });
+            assert!(file_count > 0, "Should have found file nodes");
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_cache_reconstruct_with_leaf_nodes() -> Result<(), OxenError> {
+        test::run_empty_dir_test(|dir| {
+            let repo = repositories::init::init_with_version(dir, MinOxenVersion::LATEST)?;
+
+            // Create a simple directory structure for easier testing
+            let dir1 = repo.path.join("dir1");
+            std::fs::create_dir(&dir1)?;
+
+            // Add files at different levels
+            std::fs::write(repo.path.join("root.txt"), "root file")?;
+            std::fs::write(dir1.join("file1.txt"), "file in dir1")?;
+
+            repositories::add(&repo, &repo.path)?;
+            let commit = repositories::commits::commit(&repo, "Test commit")?;
+
+            // Clear cache
+            crate::core::v_latest::index::commit_merkle_tree::remove_node_cache(&repo.path)?;
+
+            // Step 1: Load at depth 0 (just the root, no children)
+            println!("Step 1: Loading tree at depth 0...");
+            let tree_depth0 = CommitMerkleTree::from_path_depth(&repo, &commit, "", 0)?
+                .expect("Should load root");
+            println!("Tree at depth 0:");
+            CommitMerkleTree::print_node(&tree_depth0);
+
+            // At depth 0, root has VNode but VNode should have no children
+            assert_eq!(
+                tree_depth0.children.len(),
+                1,
+                "Root should have 1 VNode child at depth 0"
+            );
+            let vnode = &tree_depth0.children[0];
+            assert!(
+                matches!(vnode.node, EMerkleTreeNode::VNode(_)),
+                "Child should be VNode"
+            );
+            assert_eq!(
+                vnode.children.len(),
+                0,
+                "VNode should have no children at depth 0"
+            );
+
+            // Step 2: Load at depth 1 (root + immediate children including VNodes)
+            println!("\nStep 2: Loading tree at depth 1...");
+            let tree_depth1 = CommitMerkleTree::from_path_depth(&repo, &commit, "", 1)?
+                .expect("Should load root");
+            println!("Tree at depth 1:");
+            CommitMerkleTree::print_node(&tree_depth1);
+
+            // At depth 1, we should see root's VNode and its contents (root.txt and dir1)
+            let mut found_root_txt = false;
+            let mut found_dir1 = false;
+            let mut found_file1_txt = false;
+
+            tree_depth1.walk_tree(|node| {
+                if let EMerkleTreeNode::File(file) = &node.node {
+                    if file.name() == "root.txt" {
+                        found_root_txt = true;
+                    } else if file.name() == "file1.txt" {
+                        found_file1_txt = true;
+                    }
+                }
+                if let EMerkleTreeNode::Directory(dir) = &node.node {
+                    if dir.name() == "dir1" {
+                        found_dir1 = true;
+                        // At depth 1, dir1 has VNode but VNode has no children
+                        assert_eq!(
+                            node.children.len(),
+                            1,
+                            "dir1 should have 1 VNode child at depth 1"
+                        );
+                        let dir_vnode = &node.children[0];
+                        assert!(matches!(dir_vnode.node, EMerkleTreeNode::VNode(_)));
+                        assert_eq!(
+                            dir_vnode.children.len(),
+                            0,
+                            "dir1's VNode should have no children at depth 1"
+                        );
+                    }
+                }
+            });
+
+            assert!(found_root_txt, "Should find root.txt at depth 1");
+            assert!(found_dir1, "Should find dir1 at depth 1");
+            assert!(!found_file1_txt, "Should NOT find file1.txt at depth 1");
+
+            // Step 3: Test depth 2 - should show file1.txt since VNodes don't count
+            println!("\nStep 3: Loading tree at depth 2...");
+            let tree_depth2 = CommitMerkleTree::from_path_depth(&repo, &commit, "", 2)?
+                .expect("Should load root");
+            println!("Tree at depth 2:");
+            CommitMerkleTree::print_node(&tree_depth2);
+
+            // At depth 2, we should find file1.txt
+            let mut found_file1_txt_d2 = false;
+            tree_depth2.walk_tree(|node| {
+                if let EMerkleTreeNode::File(file) = &node.node {
+                    println!("Found file at depth 2: {}", file.name());
+                    if file.name() == "file1.txt" {
+                        found_file1_txt_d2 = true;
+                    }
+                }
+            });
+
+            // Let's also check what's in dir1's vnode
+            tree_depth2.walk_tree(|node| {
+                if let EMerkleTreeNode::Directory(dir) = &node.node {
+                    if dir.name() == "dir1" {
+                        println!("dir1 has {} children", node.children.len());
+                        for (i, child) in node.children.iter().enumerate() {
+                            println!(
+                                "  Child {}: {:?} with {} children",
+                                i,
+                                child.node.node_type(),
+                                child.children.len()
+                            );
+                        }
+                    }
+                }
+            });
+
+            // Now it should work correctly - file1.txt should be visible at depth 2
+            assert!(
+                found_file1_txt_d2,
+                "Should find file1.txt at depth 2 (directories traversed: root -> dir1)"
+            );
+
+            // Step 4: Test caching - clear cache and load a file node
+            println!("\nStep 4: Testing cached file node access...");
+            crate::core::v_latest::index::commit_merkle_tree::remove_node_cache(&repo.path)?;
+
+            // Load dir1 with its children
+            let dir1_tree = CommitMerkleTree::from_path_depth(&repo, &commit, "dir1", 1)?
+                .expect("Should load dir1");
+
+            // Find file1.txt hash
+            let mut file_hash = None;
+            dir1_tree.walk_tree(|node| {
+                if let EMerkleTreeNode::File(file) = &node.node {
+                    if file.name() == "file1.txt" {
+                        file_hash = Some(node.hash);
+                    }
+                }
+            });
+            let file_hash = file_hash.expect("Should find file1.txt");
+
+            // Try to read this file node directly - should be in cache
+            let cached_file = CommitMerkleTree::read_node(&repo, &file_hash, false)?;
+            assert!(
+                cached_file.is_some(),
+                "File should be in cache after parent was loaded"
+            );
+
+            // Clear cache and try again - should fail
+            crate::core::v_latest::index::commit_merkle_tree::remove_node_cache(&repo.path)?;
+            let uncached_file = CommitMerkleTree::read_node(&repo, &file_hash, false)?;
+            assert!(
+                uncached_file.is_none(),
+                "File should not be loadable when not cached"
+            );
 
             Ok(())
         })

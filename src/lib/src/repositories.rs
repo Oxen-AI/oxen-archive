@@ -190,6 +190,7 @@ pub fn transfer_namespace(
 
     // ensure DB instance is closed before we move the repo
     core::refs::remove_from_cache(&repo_dir)?;
+    core::v_latest::index::commit_merkle_tree::remove_node_cache(&repo_dir)?;
 
     util::fs::create_dir_all(&new_repo_dir)?;
     util::fs::rename(&repo_dir, &new_repo_dir)?;
@@ -315,6 +316,7 @@ pub fn delete(repo: &LocalRepository) -> Result<&LocalRepository, OxenError> {
 
     // Close refs DB before trying to delete the directory
     core::refs::ref_manager::remove_from_cache(&repo.path)?;
+    core::v_latest::index::commit_merkle_tree::remove_node_cache(&repo.path)?;
 
     log::debug!("Deleting repo directory: {:?}", repo);
     util::fs::remove_dir_all(&repo.path)?;

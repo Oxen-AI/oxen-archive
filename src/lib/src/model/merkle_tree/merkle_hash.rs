@@ -42,7 +42,11 @@ impl std::str::FromStr for MerkleHash {
 
 impl fmt::Display for MerkleHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:x}", self.0)
+        if self.0 == 0 {
+            write!(f, "empty")
+        } else {
+            write!(f, "{:x}", self.0)
+        }
     }
 }
 

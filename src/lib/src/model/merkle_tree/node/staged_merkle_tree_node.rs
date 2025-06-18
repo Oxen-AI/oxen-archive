@@ -4,6 +4,11 @@ use std::fmt;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
+/// A staged merkle tree node is a node that has been `add`ed but not yet committed.
+/// They are stored in the staged DB before being committed to the merkle tree.
+///
+/// For uses such as `HashSet<StagedMerkleTreeNode>`, the hash function uses the
+/// node's path if it exists.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct StagedMerkleTreeNode {
     pub status: StagedEntryStatus,

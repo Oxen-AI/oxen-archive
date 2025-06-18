@@ -1,4 +1,4 @@
-// use std::fmt::{Display, Formatter, Result};
+use std::fmt;
 
 pub mod commit_node;
 pub mod dir_node;
@@ -70,5 +70,53 @@ impl EMerkleTreeNode {
             &self,
             EMerkleTreeNode::File(_) | EMerkleTreeNode::FileChunk(_)
         )
+    }
+}
+
+impl fmt::Display for EMerkleTreeNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            EMerkleTreeNode::Commit(commit) => {
+                write!(f, "[{:?}] {} {}", self.node_type(), self.hash(), commit)
+            }
+            EMerkleTreeNode::VNode(vnode) => {
+                write!(
+                    f,
+                    "[{:?}] {} {} ({} entries)",
+                    self.node_type(),
+                    self.hash().to_short_str(),
+                    vnode,
+                    vnode.num_entries()
+                )
+            }
+            EMerkleTreeNode::Directory(dir) => {
+                write!(
+                    f,
+                    "[{:?}] {} {} ({} entries)",
+                    self.node_type(),
+                    self.hash().to_short_str(),
+                    dir,
+                    dir.num_entries()
+                )
+            }
+            EMerkleTreeNode::File(file) => {
+                write!(
+                    f,
+                    "[{:?}] {} {}",
+                    self.node_type(),
+                    self.hash().to_short_str(),
+                    file
+                )
+            }
+            EMerkleTreeNode::FileChunk(file_chunk) => {
+                write!(
+                    f,
+                    "[{:?}] {} {}",
+                    self.node_type(),
+                    self.hash().to_short_str(),
+                    file_chunk
+                )
+            }
+        }
     }
 }

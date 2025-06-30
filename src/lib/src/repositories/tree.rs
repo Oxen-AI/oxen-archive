@@ -620,7 +620,7 @@ pub fn list_missing_node_hashes(
     for hash in hashes {
         let dir_prefix = node_db_path(repo, hash);
 
-        if !(dir_prefix.join("node").exists() && dir_prefix.join("children").exists()) {
+        if !(dir_prefix.join("node").exists() ) {
             results.insert(*hash);
         }
     }

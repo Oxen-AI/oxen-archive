@@ -245,7 +245,7 @@ async fn push_commits(
         unique_hashes = HashSet::new();
 
         candidate_nodes.insert(commit_node.clone());
-        commit_node.walk_tree_without_leaves(|node| {
+        commit_node.walk_tree(|node| {
             if !starting_node_hashes.contains(&node.hash) {
                 candidate_nodes.insert(node.clone());
                 progress.set_message(format!(
@@ -255,7 +255,7 @@ async fn push_commits(
             }
         });
     }
-    log::debug!(
+    println!(
         "push_commits candidate_nodes count: {}",
         candidate_nodes.len()
     );

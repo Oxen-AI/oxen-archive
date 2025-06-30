@@ -211,12 +211,14 @@ pub async fn checkout_subtrees(
             log::debug!("to id: {:?}", to_commit.id);
             CommitMerkleTree::root_with_unique_children(
                 repo,
-                &maybe_from_commit.as_ref().unwrap(),
+                maybe_from_commit.as_ref().unwrap(),
                 &mut target_hashes,
                 &mut shared_hashes,
                 &mut partial_nodes,
             )
-            .map_err(|e| OxenError::basic_str(format!("Cannot get root node for base commit: {:?}", e)))?
+            .map_err(|e| {
+                OxenError::basic_str(format!("Cannot get root node for base commit: {:?}", e))
+            })?
         } else {
             log::warn!("head commit missing, might be a clone");
             None

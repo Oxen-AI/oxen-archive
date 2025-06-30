@@ -16,6 +16,14 @@ pub struct MerkleHashes {
 
 #[serde_as]
 #[derive(Deserialize, Serialize, Debug)]
+pub struct NodeHashes {
+    #[serde_as(as = "HashSet<MerkleHashAsString>")]
+    pub commit_hashes: HashSet<MerkleHash>,
+    pub dir_hashes: HashSet<MerkleHash>,
+}
+
+#[serde_as]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct MerkleHashesResponse {
     #[serde(flatten)]
     pub status: StatusMessage,

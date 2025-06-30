@@ -63,7 +63,6 @@ impl RunCmd for PushCmd {
 
         // Call into liboxen to push or delete
         if args.get_flag("delete") {
-
             let (scheme, host) = get_scheme_and_host_from_repo(&repo)?;
 
             check_remote_version(scheme, host).await?;

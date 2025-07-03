@@ -133,3 +133,35 @@ pub fn get(
         Err(OxenError::basic_str(format!("Key {} not found", str_key)))
     }
 }
+
+/// Set a value in a database
+pub fn set(
+    path: impl AsRef<Path>,
+    key: impl AsRef<str>,
+    value: impl AsRef<str>,
+) -> Result<(), OxenError> {
+    let path = path.as_ref();
+    let str_key = key.as_ref();
+    let str_value = value.as_ref();
+    let mut opts = Options::default();
+    opts.set_log_level(LogLevel::Fatal);
+    opts.create_if_missing(false); // Don't create DB if it doesn't exist
+
+    log::debug!("Opening db at {:?}", path);
+    let db = DB::open(&opts, dunce::simplified(path))?;
+    log::debug!("Opened db at {:?}", path);
+
+    // For now, we only support string keys and values
+    let key_bytes = str_key.as_bytes();
+    let value_bytes = str_value.as_bytes();
+
+    db.put(key_bytes, value_bytes)?;
+    log::debug!(
+        "Set key '{}' to value '{}' in db at {:?}",
+        str_key,
+        str_value,
+        path
+    );
+
+    Ok(())
+}

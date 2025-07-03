@@ -17,6 +17,9 @@ pub use get::DbGetCmd;
 pub mod list;
 pub use list::DbListCmd;
 
+pub mod set;
+pub use set::DbSetCmd;
+
 pub struct DbCmd;
 
 #[async_trait]
@@ -67,6 +70,7 @@ impl DbCmd {
             Box::new(DbListCmd),
             Box::new(DbGetCmd),
             Box::new(DbCountCmd),
+            Box::new(DbSetCmd),
         ];
         let mut runners: HashMap<String, Box<dyn RunCmd>> = HashMap::new();
         for cmd in commands {

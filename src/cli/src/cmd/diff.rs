@@ -111,15 +111,20 @@ impl RunCmd for DiffCmd {
 impl DiffCmd {
     pub fn parse_args(args: &clap::ArgMatches) -> DiffOpts {
         let resource1 = args.get_one::<String>("RESOURCE1").expect("required");
-        let resource2 = args.get_one::<String>("RESOURCE2");
-
+        log::debug!("diff parsing resource1: {}", resource1);
         let (file1, revision1) = DiffCmd::parse_file_and_revision(resource1);
+
+        let resource2 = match args.get_one::<String>("RESOURCE2") {
+            Some(resource) => Some(resource.to_string()),
+            None => Some(format!("{file1}:main")),
+        };
 
         let file1 = PathBuf::from(file1);
 
         let (file2, revision2) = match resource2 {
             Some(resource) => {
-                let (file, revision) = DiffCmd::parse_file_and_revision(resource);
+                let (file, revision) = DiffCmd::parse_file_and_revision(&resource);
+                log::debug!("diff parsed file2: {} revision2: {:?}", file, revision);
                 (Some(PathBuf::from(file)), revision)
             }
             None => (None, None),
@@ -129,6 +134,7 @@ impl DiffCmd {
             Some(values) => values.cloned().collect(),
             None => Vec::new(),
         };
+        log::debug!("diff parsed keys: {:?}", keys);
 
         // We changed the external name to compares, need to refactor internals still
         let maybe_targets = args.get_many::<String>("compares");
@@ -137,10 +143,12 @@ impl DiffCmd {
             Some(values) => values.cloned().collect(),
             None => Vec::new(),
         };
+        log::debug!("diff parsed targets: {:?}", targets);
 
         let output = args.get_one::<String>("output").map(PathBuf::from);
+        log::debug!("diff parsed output: {:?}", output);
 
-        DiffOpts {
+        let opts = DiffOpts {
             path_1: file1,
             path_2: file2,
             keys,
@@ -149,7 +157,9 @@ impl DiffCmd {
             revision_1: revision1,
             revision_2: revision2,
             output,
-        }
+        };
+        log::debug!("diff parsed opts: {:?}", opts);
+        opts
     }
 
     fn parse_file_and_revision(file_revision: &str) -> (String, Option<String>) {

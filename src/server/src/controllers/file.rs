@@ -144,7 +144,7 @@ pub async fn put(
                 if current_commit_hash != claimed_hash {
                     return Err(OxenHttpError::BasicError(
                         format!(
-                            "File has been modified since claimed revision. Current: {}, Claimed: {}. Your changes would overwrite another change withouStop t that being from a merge",
+                            "File has been modified since claimed revision. Current: {}, Claimed: {}. Your changes would overwrite another change without that being from a merge",
                             current_commit_hash, claimed_hash
                         )
                         .into(),

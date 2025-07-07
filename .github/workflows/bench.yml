@@ -10,7 +10,7 @@ on:
 jobs:
   benchmarks:
     name: Run benchmarks
-    runs-on: macos-latest-large
+    runs-on: ubuntu-20.04-16core
     steps:
       - uses: actions/checkout@v4
 

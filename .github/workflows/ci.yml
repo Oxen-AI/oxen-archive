@@ -15,16 +15,6 @@ jobs:
           libdbus-1-dev libssl-dev \
           clang libavcodec-dev libavformat-dev libavfilter-dev libavdevice-dev libavutil-dev pkg-config \
           ruby ruby-dev rubygems build-essential
-      # - name: Install imagemagick
-      #   run: |
-      #     export MAGICK_VERSION=7.1 \
-      #     && curl https://imagemagick.org/archive/ImageMagick.tar.gz | tar xz \
-      #     && cd ImageMagick-${MAGICK_VERSION}* \
-      #     && ./configure --with-magick-plus-plus=no --with-perl=no \
-      #     && make \
-      #     && sudo make install \
-      #     && cd .. \
-      #     && rm -r ImageMagick-${MAGICK_VERSION}*
       - name: Cache Rust dependencies
         uses: actions/cache@v3
         with:
@@ -35,44 +25,19 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-
-
-  fmt:
-    name: Rustfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update \
-          && sudo apt-get install -y \
-          libdbus-1-dev libssl-dev \
-          clang libavcodec-dev libavformat-dev libavfilter-dev libavdevice-dev libavutil-dev pkg-config \
-          ruby ruby-dev rubygems build-essential
-      - name: Cache Rust dependencies
-        uses: actions/cache@v3
-        with:
-          path: target
-          key: ${{ runner.OS }}-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.OS }}-build-
-      - name: cargo check
-        uses: actions-rs/cargo@v1
+      - run: rustup component add rustfmt clippy
+      - uses: actions-rs/cargo@v1
         with:
           command: check
-      - name: cargo fmt
-        uses: actions-rs/toolchain@v1
-        run: rustup component add rustfmt clippy
-        uses: actions-rs/cargo@v1
+      - uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: --all -- --check
-
-      - name: cargo clippy
-        uses: actions-rs/cargo@v1
+      - uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: --no-deps -- -D warnings
+
 
   # test_macos:
   #   name: Test Suite MacOS

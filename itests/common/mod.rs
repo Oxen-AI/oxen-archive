@@ -9,6 +9,9 @@ use liboxen::storage::VersionStore;
 pub mod in_memory_storage;
 pub use in_memory_storage::InMemoryVersionStore;
 
+pub mod test_repository_builder;
+pub use test_repository_builder::TestRepositoryBuilder;
+
 pub struct TestServer {
     child: Child,
     base_url: String,

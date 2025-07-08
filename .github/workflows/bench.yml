@@ -75,6 +75,7 @@ jobs:
     name: Stop self-hosted EC2 runner
     needs:
       - start-self-hosted-runner
+      - benchmarks
     runs-on: ubuntu-latest
     if: ${{ always() }}
     steps:

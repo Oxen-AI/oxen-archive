@@ -2,7 +2,12 @@
 
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
+use std::sync::Arc;
 use tokio::time::sleep;
+use liboxen::storage::VersionStore;
+
+pub mod in_memory_storage;
+pub use in_memory_storage::InMemoryVersionStore;
 
 pub struct TestServer {
     child: Child,
@@ -142,4 +147,92 @@ pub async fn make_initialized_repo_with_test_files(base_dir: &std::path::Path) -
     liboxen::repositories::commits::commit_writer::commit_with_user(&repo, "Initial commit with test files", &user)?;
     
     Ok(repo_dir)
+}
+
+/// Create an initialized repository with test user and CSV file using in-memory storage
+#[allow(dead_code)]
+pub async fn make_initialized_repo_with_test_user_in_memory(base_dir: &std::path::Path) -> Result<(std::path::PathBuf, liboxen::model::LocalRepository), Box<dyn std::error::Error>> {
+    let repo_dir = base_dir.join("test_user").join("csv_repo");
+    std::fs::create_dir_all(&repo_dir)?;
+    
+    // Initialize repository with in-memory storage using composition
+    let repo = init_repo_with_in_memory_storage(&repo_dir)?;
+    
+    // Create CSV content
+    let csv_content = "product,price,category\nLaptop,999.99,Electronics\nChair,149.50,Furniture\nBook,19.99,Education";
+    let csv_path = repo_dir.join("products.csv");
+    
+    // Write CSV file temporarily - the add operation will read this and store content in memory
+    std::fs::write(&csv_path, csv_content)?;
+    
+    // Add file and commit with user info
+    // The add operation will read the file and store its content in the in-memory version store
+    liboxen::repositories::add(&repo, &csv_path)?;
+    
+    let user = liboxen::model::User {
+        name: "Test".to_string(),
+        email: "test@test.com".to_string(),
+    };
+    
+    liboxen::repositories::commits::commit_writer::commit_with_user(&repo, "Add CSV data", &user)?;
+    
+    Ok((repo_dir, repo))
+}
+
+/// Create an initialized repository with in-memory storage for testing
+#[allow(dead_code)]
+pub async fn make_initialized_repo_with_in_memory_storage(base_dir: &std::path::Path) -> Result<(std::path::PathBuf, liboxen::model::LocalRepository), Box<dyn std::error::Error>> {
+    let repo_dir = base_dir.join("test_user").join("memory_repo");
+    std::fs::create_dir_all(&repo_dir)?;
+    
+    // Initialize repository with in-memory storage using composition
+    let repo = init_repo_with_in_memory_storage(&repo_dir)?;
+    
+    Ok((repo_dir, repo))
+}
+
+/// Create an initialized repository with test files using in-memory storage
+#[allow(dead_code)]
+pub async fn make_initialized_repo_with_test_files_in_memory(base_dir: &std::path::Path) -> Result<(std::path::PathBuf, liboxen::model::LocalRepository), Box<dyn std::error::Error>> {
+    let repo_dir = base_dir.join("test_user").join("memory_test_repo");
+    std::fs::create_dir_all(&repo_dir)?;
+    
+    // Initialize repository with in-memory storage using composition
+    let repo = init_repo_with_in_memory_storage(&repo_dir)?;
+    
+    // Create test files
+    let test_content = "Hello from Oxen integration test!\nThis is real file content.";
+    std::fs::write(repo_dir.join("test.txt"), test_content)?;
+    
+    let csv_content = "name,age,city\nAlice,30,New York\nBob,25,San Francisco\nCharlie,35,Chicago";
+    std::fs::write(repo_dir.join("data.csv"), csv_content)?;
+    
+    // Add files and commit with user info
+    liboxen::repositories::add(&repo, &repo_dir.join("test.txt"))?;
+    liboxen::repositories::add(&repo, &repo_dir.join("data.csv"))?;
+    
+    let user = liboxen::model::User {
+        name: "Test User".to_string(),
+        email: "test@example.com".to_string(),
+    };
+    
+    liboxen::repositories::commits::commit_writer::commit_with_user(&repo, "Initial commit with test files", &user)?;
+    
+    Ok((repo_dir, repo))
+}
+
+/// Helper function to initialize a repository with in-memory storage using composition
+/// This creates the repository structure and injects the in-memory storage
+fn init_repo_with_in_memory_storage(repo_dir: &std::path::Path) -> Result<liboxen::model::LocalRepository, Box<dyn std::error::Error>> {
+    // Create the basic repository structure first
+    liboxen::repositories::init(repo_dir)?;
+    
+    // Create in-memory version store
+    let in_memory_store = Arc::new(InMemoryVersionStore::new());
+    in_memory_store.init()?;
+    
+    // Use composition to create repository with in-memory storage
+    let repo = liboxen::model::LocalRepository::with_version_store(repo_dir, in_memory_store)?;
+    
+    Ok(repo)
 }

@@ -1,4 +1,4 @@
-use crate::common::{TestServer, make_initialized_repo_with_test_user};
+use crate::common::{TestServer, make_initialized_repo_with_test_user_in_memory};
 
 
 #[tokio::test]
@@ -9,8 +9,8 @@ async fn oxen_repo_held_csv_should_be_accessible_via_http_get() {
     let _ = std::fs::remove_dir_all(&test_dir);
     std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
     
-    // Create repository with CSV file using programmatic API
-    let _repo_dir = make_initialized_repo_with_test_user(&test_dir).await.expect("Failed to create initialized repo");
+    // Create repository with CSV file using programmatic API with in-memory storage
+    let (_repo_dir, _repo) = make_initialized_repo_with_test_user_in_memory(&test_dir).await.expect("Failed to create initialized repo");
     
     // Start oxen-server
     let server = TestServer::start_with_sync_dir(&test_dir, 3001).await.expect("Failed to start test server");

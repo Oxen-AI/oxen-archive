@@ -1,6 +1,6 @@
 use std::time::Duration;
 use serde_json::Value;
-use crate::common::{TestServer, make_initialized_repo_with_test_files};
+use crate::common::{TestServer, make_initialized_repo_with_test_files_in_memory};
 
 
 /// Integration test: Oxen repo committed files should return real data via HTTP GET
@@ -12,8 +12,8 @@ async fn oxen_repo_committed_files_should_return_real_data_via_http_get() {
     let _ = std::fs::remove_dir_all(&test_dir);
     std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
     
-    // Create repository with test files using programmatic API
-    let _repo_dir = make_initialized_repo_with_test_files(&test_dir).await.expect("Failed to create initialized repo");
+    // Create repository with test files using programmatic API with in-memory storage
+    let (_repo_dir, _repo) = make_initialized_repo_with_test_files_in_memory(&test_dir).await.expect("Failed to create initialized repo");
     
     // Start oxen-server
     let server = TestServer::start_with_sync_dir(&test_dir, 3004).await.expect("Failed to start test server");

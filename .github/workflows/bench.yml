@@ -75,7 +75,6 @@ jobs:
   name: Stop self-hosted EC2 runner
   needs:
     - start-self-hosted-runner
-    - release_docker_arm64
   runs-on: ubuntu-latest
   if: ${{ always() }}
   steps:

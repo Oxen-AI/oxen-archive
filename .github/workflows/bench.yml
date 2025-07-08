@@ -10,7 +10,7 @@ on:
 jobs:
   benchmarks:
     name: Run benchmarks
-    runs-on: ubuntu-20.04-16core
+    runs-on: ubuntu-20.04-8core
     steps:
       - uses: actions/checkout@v4
 

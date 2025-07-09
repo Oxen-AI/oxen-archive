@@ -515,6 +515,78 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn test_controllers_file_put_with_commit_message() -> Result<(), OxenError> {
+        test::init_test_env();
+        let sync_dir = test::get_sync_dir()?;
+        let namespace = "Testing-Namespace";
+        let repo_name = "Testing-Name";
+        let repo = test::create_local_repo(&sync_dir, namespace, repo_name)?;
+        
+        // User config will be set via commit metadata headers in the test
+        util::fs::create_dir_all(repo.path.join("data"))?;
+        let hello_file = repo.path.join("data/hello.txt");
+        util::fs::write_to_path(&hello_file, "Hello")?;
+        repositories::add(&repo, &hello_file)?;
+        let _commit = repositories::commit(&repo, "First commit")?;
+
+        let custom_commit_message = "Custom commit message from header";
+
+        // Create multipart request data
+        let (body, headers) = create_form_data_payload_and_headers(
+            "file",
+            Some("hello.txt".to_owned()),
+            Some(mime::TEXT_PLAIN_UTF_8),
+            Bytes::from_static(b"Updated Content!"),
+        );
+
+        let uri = format!("/oxen/{namespace}/{repo_name}/file/main/data/hello.txt");
+        let req = actix_web::test::TestRequest::put()
+            .uri(&uri)
+            .app_data(OxenAppData::new(sync_dir.to_path_buf()))
+            .insert_header(("oxen-commit-message", custom_commit_message))
+            .insert_header(("oxen-commit-author", "Test Author"))
+            .insert_header(("oxen-commit-email", "test@example.com"));
+
+        let req = headers
+            .into_iter()
+            .fold(req, |req, hdr| req.insert_header(hdr))
+            .set_payload(body)
+            .to_request();
+
+        let app = actix_web::test::init_service(
+            App::new()
+                .app_data(OxenAppData::new(sync_dir.clone()))
+                .route(
+                    "/oxen/{namespace}/{repo_name}/file/{resource:.*}",
+                    web::put().to(controllers::file::put),
+                ),
+        )
+        .await;
+
+        let resp = actix_web::test::call_service(&app, req).await;
+        let bytes = actix_http::body::to_bytes(resp.into_body()).await.unwrap();
+        let body = std::str::from_utf8(&bytes).unwrap();
+        println!("Upload response: {}", body);
+        let resp: CommitResponse = serde_json::from_str(body)?;
+        assert_eq!(resp.status.status, "success");
+
+        // Check that the commit message was used
+        assert_eq!(resp.commit.message, custom_commit_message);
+
+        // Check that the file was updated
+        let entries = repositories::entries::list_for_commit(&repo, &resp.commit)?;
+        let entry = entries.into_iter().find(|e| e.path == PathBuf::from("hello.txt")).unwrap();
+        let version_path = util::fs::version_path_from_hash(&repo, entry.hash.to_string());
+        let updated_content = util::fs::read_from_path(&version_path)?;
+        assert_eq!(updated_content, "Updated Content!");
+
+        // cleanup
+        test::cleanup_sync_dir(&sync_dir)?;
+
+        Ok(())
+    }
+
+    #[actix_web::test]
     async fn test_controllers_file_import() -> Result<(), OxenError> {
         test::init_test_env();
         let sync_dir = test::get_sync_dir()?;

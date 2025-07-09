@@ -43,7 +43,7 @@ async fn test_repository_builder_with_server() {
         .unwrap();
 
     // Start server to test HTTP endpoints
-    let server = TestServer::start_with_sync_dir(&test_dir, 3005).await
+    let server = TestServer::start_with_sync_dir(&test_dir, 3021).await
         .expect("Failed to start test server");
 
     // Test HTTP client

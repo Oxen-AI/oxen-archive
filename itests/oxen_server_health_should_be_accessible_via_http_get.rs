@@ -1,80 +1,114 @@
 use std::time::Duration;
 use crate::common::TestServer;
 
-
-/// Integration test: Oxen server health should be accessible via HTTP GET
-/// Uses real oxen-server process and actual HTTP GET requests (reqwest - Rust's OkHttp equivalent)
+/// Test health endpoint
+/// Tests that the /api/health endpoint responds successfully
 #[tokio::test]
-async fn oxen_server_health_should_be_accessible_via_http_get() {
-    // Create test directory
-    let test_dir = std::env::temp_dir().join("oxen_http_test");
+async fn test_health_endpoint() {
+    let test_dir = std::env::temp_dir().join("oxen_health_test");
     std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
     
-    // Start oxen-server
-    let server = TestServer::start_with_sync_dir(&test_dir, 3002).await.expect("Failed to start test server");
+    // Start oxen-server with auto-port allocation
+    let server = TestServer::start_with_auto_port(&test_dir).await
+        .expect("Failed to start test server");
     
-    // Create HTTP client (reqwest is Rust's equivalent to OkHttp)
+    // Create HTTP client
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
         .expect("Failed to create HTTP client");
     
-    // Test 1: Health endpoint (server already verified healthy during startup)
     println!("Testing health endpoint...");
-    let health_result = match client.get(&format!("{}/api/health", server.base_url())).send().await {
-        Ok(response) => {
-            println!("Health response status: {}", response.status());
-            if response.status().is_success() {
-                let body = response.text().await.unwrap_or_default();
-                println!("Health response body: {}", body);
-                Ok(())
-            } else {
-                Err("Health check returned non-success status")
-            }
-        }
-        Err(e) => {
-            println!("Health check failed: {}", e);
-            Err("Health check failed")
-        }
-    };
+    let response = client.get(&format!("{}/api/health", server.base_url()))
+        .send()
+        .await
+        .expect("Failed to send health check request");
     
-    // Test 2: Version endpoint (if health worked)
-    if health_result.is_ok() {
-        println!("Testing version endpoint...");
-        match client.get(&format!("{}/api/version", server.base_url())).send().await {
-            Ok(response) => {
-                println!("Version response status: {}", response.status());
-                if response.status().is_success() {
-                    let body = response.text().await.unwrap_or_default();
-                    println!("Version response body: {}", body);
-                    assert!(body.contains("version"), "Version response should contain version info");
-                }
-            }
-            Err(e) => {
-                println!("Version endpoint failed: {}", e);
-            }
-        }
-    }
+    let status = response.status();
+    println!("Health response status: {}", status);
+    let body = response.text().await.unwrap_or_default();
+    println!("Health response body: {}", body);
     
-    // Test 3: 404 endpoint
-    println!("Testing 404 endpoint...");
-    match client.get(&format!("{}/api/nonexistent", server.base_url())).send().await {
-        Ok(response) => {
-            println!("404 test response status: {}", response.status());
-            // Should be 404 or some error status
-        }
-        Err(e) => {
-            println!("404 test failed: {}", e);
-        }
-    }
+    // Health endpoint should return success
+    assert!(status.is_success(), "Health endpoint should return success status");
     
-    // Clean up test directory
+    // Clean up
     let _ = std::fs::remove_dir_all(&test_dir);
+    println!("✅ Health endpoint test completed!");
+}
+
+/// Test version endpoint
+/// Tests that the /api/version endpoint returns version information
+#[tokio::test]
+async fn test_version_endpoint() {
+    let test_dir = std::env::temp_dir().join("oxen_version_test");
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
     
-    // Server cleanup handled by Drop trait
+    // Start oxen-server with auto-port allocation
+    let server = TestServer::start_with_auto_port(&test_dir).await
+        .expect("Failed to start test server");
     
-    // Assert that at least the health check worked
-    health_result.expect("HTTP integration test failed - server did not respond to health checks");
+    // Create HTTP client
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("Failed to create HTTP client");
     
-    println!("✅ Real HTTP integration test completed successfully!");
+    println!("Testing version endpoint...");
+    let response = client.get(&format!("{}/api/version", server.base_url()))
+        .send()
+        .await
+        .expect("Failed to send version request");
+    
+    let status = response.status();
+    println!("Version response status: {}", status);
+    let body = response.text().await.unwrap_or_default();
+    println!("Version response body: {}", body);
+    
+    if status.is_success() {
+        assert!(body.contains("version"), "Version response should contain version info");
+        println!("✅ Version endpoint returned expected content");
+    } else {
+        println!("⚠️  Version endpoint returned non-success status (may be expected)");
+    }
+    
+    // Clean up
+    let _ = std::fs::remove_dir_all(&test_dir);
+    println!("✅ Version endpoint test completed!");
+}
+
+/// Test 404 endpoint
+/// Tests that non-existent endpoints return appropriate error responses
+#[tokio::test]
+async fn test_404_endpoint() {
+    let test_dir = std::env::temp_dir().join("oxen_404_test");
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+    
+    // Start oxen-server with auto-port allocation
+    let server = TestServer::start_with_auto_port(&test_dir).await
+        .expect("Failed to start test server");
+    
+    // Create HTTP client
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("Failed to create HTTP client");
+    
+    println!("Testing 404 endpoint...");
+    let response = client.get(&format!("{}/api/nonexistent", server.base_url()))
+        .send()
+        .await
+        .expect("Failed to send 404 test request");
+    
+    let status = response.status();
+    println!("404 test response status: {}", status);
+    let body = response.text().await.unwrap_or_default();
+    println!("404 test response body: {}", body);
+    
+    // Should be 404 or some error status (not success)
+    assert!(!status.is_success(), "Non-existent endpoint should not return success status");
+    
+    // Clean up
+    let _ = std::fs::remove_dir_all(&test_dir);
+    println!("✅ 404 endpoint test completed!");
 }

@@ -12,9 +12,13 @@ pub use in_memory_storage::InMemoryVersionStore;
 pub mod test_repository_builder;
 pub use test_repository_builder::TestRepositoryBuilder;
 
+pub mod port_leaser;
+pub use port_leaser::{TestPortAllocator, PortLease};
+
 pub struct TestServer {
     child: Child,
     base_url: String,
+    _port_lease: Option<PortLease>, // Keep lease alive for server lifetime
 }
 
 impl TestServer {
@@ -71,6 +75,79 @@ impl TestServer {
                     return Ok(TestServer {
                         child,
                         base_url,
+                        _port_lease: None, // Manual port, no lease needed
+                    });
+                }
+            }
+            sleep(Duration::from_millis(5)).await;
+        }
+        
+        // If we get here, server didn't start properly
+        let _ = child.kill();
+        Err("Server failed to start or health check failed".into())
+    }
+    
+    /// Start a real oxen-server process with automatic port allocation
+    /// This method is thread-safe and prevents port conflicts in parallel tests
+    pub async fn start_with_auto_port(sync_dir: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
+        // Lease a port from the global allocator
+        let port_lease = TestPortAllocator::instance().lease_port()
+            .map_err(|e| format!("Failed to lease port: {}", e))?;
+        
+        let port = port_lease.port();
+        
+        // Create the sync directory
+        std::fs::create_dir_all(&sync_dir)?;
+        
+        // Find the oxen-server binary
+        let server_path = std::env::current_dir()?
+            .join("target")
+            .join("debug")
+            .join("oxen-server");
+            
+        if !server_path.exists() {
+            return Err("oxen-server binary not found. Run 'cargo build' first".into());
+        }
+        
+        // Start the server process
+        let mut child = Command::new(server_path)
+            .arg("start")
+            .arg("--ip")
+            .arg("127.0.0.1")
+            .arg("--port")
+            .arg(&port.to_string())
+            .env("SYNC_DIR", &sync_dir)
+            .stdout(Stdio::null()) // Suppress output to avoid hanging
+            .stderr(Stdio::null())
+            .spawn()?;
+            
+        // Check if process is still running
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Err(format!("Server process exited early with status: {}", status).into());
+            }
+            Ok(None) => {
+                // Process is still running, good
+            }
+            Err(e) => {
+                return Err(format!("Error checking server process: {}", e).into());
+            }
+        }
+        
+        // Try to connect to health endpoint to verify server is ready
+        let client = reqwest::Client::new();
+        let base_url = format!("http://127.0.0.1:{}", port);
+        let start_time = std::time::Instant::now();
+        
+        for i in 0..1000 {
+            if let Ok(response) = client.get(&format!("{}/api/health", base_url)).send().await {
+                if response.status().is_success() {
+                    let elapsed = start_time.elapsed();
+                    println!("Server started in {:?} (attempt {}) on auto-port {}", elapsed, i + 1, port);
+                    return Ok(TestServer {
+                        child,
+                        base_url,
+                        _port_lease: Some(port_lease), // Keep lease alive for server lifetime
                     });
                 }
             }
@@ -192,6 +269,36 @@ pub async fn make_initialized_repo_with_in_memory_storage(base_dir: &std::path::
     let repo = init_repo_with_in_memory_storage(&repo_dir)?;
     
     Ok((repo_dir, repo))
+}
+
+/// Helper function to create test environment with auto-port allocation
+/// This replaces the manual create_test_environment(port) pattern
+#[allow(dead_code)]
+pub async fn create_test_environment_with_auto_port() -> Result<(std::path::PathBuf, TestServer, reqwest::Client), Box<dyn std::error::Error>> {
+    let unique_id = std::thread::current().id();
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let test_dir = std::env::temp_dir().join(format!("oxen_auto_port_test_{:?}_{}", unique_id, timestamp));
+    let _ = std::fs::remove_dir_all(&test_dir);
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+    
+    // Create repository with test files using programmatic API with in-memory storage
+    let (_repo_dir, _repo) = make_initialized_repo_with_test_files_in_memory(&test_dir).await
+        .expect("Failed to create initialized repo");
+    
+    // Start oxen-server with auto-port allocation
+    let server = TestServer::start_with_auto_port(&test_dir).await
+        .expect("Failed to start test server");
+    
+    // Create HTTP client
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .expect("Failed to create HTTP client");
+    
+    Ok((test_dir, server, client))
 }
 
 /// Create an initialized repository with test files using in-memory storage

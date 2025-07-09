@@ -154,10 +154,15 @@ pub async fn put(
         }
     }
 
+    // Required commit message
+    let message = req.headers().get("oxen-commit-message")
+        .ok_or(OxenHttpError::BadRequest("Missing required header: oxen-commit-message".into()))?
+        .to_str()
+        .map_err(|_| OxenHttpError::BadRequest("Invalid oxen-commit-message header value".into()))?;
+    
     // Optional commit info
     let author = req.headers().get("oxen-commit-author");
     let email = req.headers().get("oxen-commit-email");
-    let message = req.headers().get("oxen-commit-message");
 
     // Create temporary workspace
     let workspace = repositories::workspaces::create_temporary(&repo, &commit)?;
@@ -176,10 +181,7 @@ pub async fn put(
     let commit_body = NewCommitBody {
         author: author.map_or("".to_string(), |a| a.to_str().unwrap().to_string()),
         email: email.map_or("".to_string(), |e| e.to_str().unwrap().to_string()),
-        message: message.map_or(
-            format!("Auto-commit files to {}", &resource.path.to_string_lossy()),
-            |m| m.to_str().unwrap().to_string(),
-        ),
+        message: message.to_string(),
     };
     let commit = repositories::workspaces::commit(&workspace, &commit_body, branch.name)?;
     log::debug!("file::put workspace commit ✅ success! commit {:?}", commit);
@@ -350,7 +352,8 @@ mod tests {
             .app_data(OxenAppData::new(sync_dir.to_path_buf()))
             .param("namespace", namespace)
             .param("repo_name", repo_name)
-            .param("resource", "hello.txt");
+            .param("resource", "hello.txt")
+            .insert_header(("oxen-commit-message", "Test commit message"));
 
         let req = headers
             .into_iter()
@@ -419,7 +422,8 @@ mod tests {
         let req = actix_web::test::TestRequest::put()
             .uri(&uri)
             .app_data(OxenAppData::new(sync_dir.to_path_buf()))
-            .insert_header(("oxen-based-on", current_hash.as_str()));
+            .insert_header(("oxen-based-on", current_hash.as_str()))
+            .insert_header(("oxen-commit-message", "Test commit message"));
 
         let req = headers
             .into_iter()
@@ -485,7 +489,8 @@ mod tests {
         let req = actix_web::test::TestRequest::put()
             .uri(&uri)
             .app_data(OxenAppData::new(sync_dir.to_path_buf()))
-            .insert_header(("oxen-based-on", fake_hash));
+            .insert_header(("oxen-based-on", fake_hash))
+            .insert_header(("oxen-commit-message", "Test commit message"));
 
         let req = headers
             .into_iter()
@@ -579,6 +584,60 @@ mod tests {
         let version_path = util::fs::version_path_from_hash(&repo, entry.hash.to_string());
         let updated_content = util::fs::read_from_path(&version_path)?;
         assert_eq!(updated_content, "Updated Content!");
+
+        // cleanup
+        test::cleanup_sync_dir(&sync_dir)?;
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_controllers_file_put_without_commit_message() -> Result<(), OxenError> {
+        test::init_test_env();
+        let sync_dir = test::get_sync_dir()?;
+        let namespace = "Testing-Namespace";
+        let repo_name = "Testing-Name";
+        let repo = test::create_local_repo(&sync_dir, namespace, repo_name)?;
+        util::fs::create_dir_all(repo.path.join("data"))?;
+        let hello_file = repo.path.join("data/hello.txt");
+        util::fs::write_to_path(&hello_file, "Hello")?;
+        repositories::add(&repo, &hello_file)?;
+        let _commit = repositories::commit(&repo, "First commit")?;
+
+        // Create multipart request data
+        let (body, headers) = create_form_data_payload_and_headers(
+            "file",
+            Some("hello.txt".to_owned()),
+            Some(mime::TEXT_PLAIN_UTF_8),
+            Bytes::from_static(b"Updated Content!"),
+        );
+
+        let uri = format!("/oxen/{namespace}/{repo_name}/file/main/data/hello.txt");
+        let req = actix_web::test::TestRequest::put()
+            .uri(&uri)
+            .app_data(OxenAppData::new(sync_dir.to_path_buf()));
+        // Note: NOT setting oxen-commit-message header
+
+        let req = headers
+            .into_iter()
+            .fold(req, |req, hdr| req.insert_header(hdr))
+            .set_payload(body)
+            .to_request();
+
+        let app = actix_web::test::init_service(
+            App::new()
+                .app_data(OxenAppData::new(sync_dir.clone()))
+                .route(
+                    "/oxen/{namespace}/{repo_name}/file/{resource:.*}",
+                    web::put().to(controllers::file::put),
+                ),
+        )
+        .await;
+
+        let resp = actix_web::test::call_service(&app, req).await;
+        
+        // Should return bad request status
+        assert_eq!(resp.status(), actix_web::http::StatusCode::BAD_REQUEST);
 
         // cleanup
         test::cleanup_sync_dir(&sync_dir)?;

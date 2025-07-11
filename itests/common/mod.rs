@@ -173,102 +173,220 @@ impl Drop for TestServer {
     }
 }
 
+/// Builder for creating test repositories with various configurations
+#[derive(Default)]
+pub struct TestRepoBuilder {
+    base_dir: Option<std::path::PathBuf>,
+    repo_name: Option<String>,
+    user_name: Option<String>,
+    user_email: Option<String>,
+    commit_message: Option<String>,
+    files: Vec<(String, String)>, // (filename, content)
+    use_in_memory_storage: bool,
+    namespace: Option<String>,
+}
+
+impl TestRepoBuilder {
+    /// Create a new TestRepoBuilder
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the base directory for the repository
+    pub fn base_dir<P: AsRef<std::path::Path>>(mut self, dir: P) -> Self {
+        self.base_dir = Some(dir.as_ref().to_path_buf());
+        self
+    }
+
+    /// Set the repository name (defaults to "test_repo")
+    pub fn repo_name<S: Into<String>>(mut self, name: S) -> Self {
+        self.repo_name = Some(name.into());
+        self
+    }
+
+    /// Set the user name for commits (defaults to "Test User")
+    pub fn user_name<S: Into<String>>(mut self, name: S) -> Self {
+        self.user_name = Some(name.into());
+        self
+    }
+
+    /// Set the user email for commits (defaults to "test@example.com")
+    pub fn user_email<S: Into<String>>(mut self, email: S) -> Self {
+        self.user_email = Some(email.into());
+        self
+    }
+
+    /// Set the commit message (defaults to "Initial commit")
+    pub fn commit_message<S: Into<String>>(mut self, message: S) -> Self {
+        self.commit_message = Some(message.into());
+        self
+    }
+
+    /// Add a file to be created in the repository
+    pub fn add_file<S: Into<String>>(mut self, filename: S, content: S) -> Self {
+        self.files.push((filename.into(), content.into()));
+        self
+    }
+
+    /// Add a CSV file with sample data
+    pub fn add_csv_file<S: Into<String>>(mut self, filename: S) -> Self {
+        let csv_content = "product,price,category\nLaptop,999.99,Electronics\nChair,149.50,Furniture\nBook,19.99,Education";
+        self.files.push((filename.into(), csv_content.to_string()));
+        self
+    }
+
+    /// Add a text file with sample data
+    pub fn add_text_file<S: Into<String>>(mut self, filename: S) -> Self {
+        let text_content = "Hello from Oxen integration test!\nThis is real file content.";
+        self.files.push((filename.into(), text_content.to_string()));
+        self
+    }
+
+    /// Add a sample data CSV file
+    pub fn add_data_csv_file<S: Into<String>>(mut self, filename: S) -> Self {
+        let csv_content = "name,age,city\nAlice,30,New York\nBob,25,San Francisco\nCharlie,35,Chicago";
+        self.files.push((filename.into(), csv_content.to_string()));
+        self
+    }
+
+    /// Enable in-memory storage for the repository
+    pub fn use_in_memory_storage(mut self, use_memory: bool) -> Self {
+        self.use_in_memory_storage = use_memory;
+        self
+    }
+
+    /// Set the namespace for the repository (defaults to "test_user")
+    pub fn namespace<S: Into<String>>(mut self, namespace: S) -> Self {
+        self.namespace = Some(namespace.into());
+        self
+    }
+
+    /// Build the repository and return the path (and repo if using in-memory storage)
+    pub async fn build(self) -> Result<TestRepoResult, Box<dyn std::error::Error>> {
+        let base_dir = self.base_dir.ok_or("Base directory must be set")?;
+        let repo_name = self.repo_name.unwrap_or_else(|| "test_repo".to_string());
+        let namespace = self.namespace.unwrap_or_else(|| "test_user".to_string());
+        let user_name = self.user_name.unwrap_or_else(|| "Test User".to_string());
+        let user_email = self.user_email.unwrap_or_else(|| "test@example.com".to_string());
+        let commit_message = self.commit_message.unwrap_or_else(|| "Initial commit".to_string());
+
+        let repo_dir = base_dir.join(&namespace).join(&repo_name);
+        std::fs::create_dir_all(&repo_dir)?;
+
+        // Initialize repository with or without in-memory storage
+        let repo = if self.use_in_memory_storage {
+            init_repo_with_in_memory_storage(&repo_dir)?
+        } else {
+            liboxen::repositories::init(&repo_dir)?
+        };
+
+        // Create files if any were specified
+        if !self.files.is_empty() {
+            for (filename, content) in &self.files {
+                let file_path = repo_dir.join(filename);
+                std::fs::write(&file_path, content)?;
+                liboxen::repositories::add(&repo, &file_path)?;
+            }
+
+            // Commit the files
+            let user = liboxen::model::User {
+                name: user_name,
+                email: user_email,
+            };
+            liboxen::repositories::commits::commit_writer::commit_with_user(&repo, &commit_message, &user)?;
+        }
+
+        Ok(TestRepoResult {
+            repo_dir,
+            repo: if self.use_in_memory_storage { Some(repo) } else { None },
+        })
+    }
+}
+
+/// Result of building a test repository
+pub struct TestRepoResult {
+    pub repo_dir: std::path::PathBuf,
+    pub repo: Option<liboxen::model::LocalRepository>,
+}
+
+impl TestRepoResult {
+    /// Get the repository directory path
+    pub fn path(&self) -> &std::path::Path {
+        &self.repo_dir
+    }
+
+    /// Get the repository (if using in-memory storage)
+    pub fn repo(&self) -> Option<&liboxen::model::LocalRepository> {
+        self.repo.as_ref()
+    }
+
+    /// Convert to tuple for backward compatibility
+    pub fn into_tuple(self) -> (std::path::PathBuf, Option<liboxen::model::LocalRepository>) {
+        (self.repo_dir, self.repo)
+    }
+}
+
 /// Create an initialized repository with test user configuration
 #[allow(dead_code)]
 pub async fn make_initialized_repo_with_test_user(base_dir: &std::path::Path) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
-    let repo_dir = base_dir.join("test_user").join("csv_repo");
-    std::fs::create_dir_all(&repo_dir)?;
+    let result = TestRepoBuilder::new()
+        .base_dir(base_dir)
+        .repo_name("csv_repo")
+        .user_name("Test")
+        .user_email("test@test.com")
+        .commit_message("Add CSV data")
+        .add_csv_file("products.csv")
+        .build()
+        .await?;
     
-    // Initialize repository programmatically
-    let repo = liboxen::repositories::init(&repo_dir)?;
-    
-    // Create CSV content
-    let csv_content = "product,price,category\nLaptop,999.99,Electronics\nChair,149.50,Furniture\nBook,19.99,Education";
-    std::fs::write(repo_dir.join("products.csv"), csv_content)?;
-    
-    // Add file and commit with user info
-    liboxen::repositories::add(&repo, &repo_dir.join("products.csv"))?;
-    
-    let user = liboxen::model::User {
-        name: "Test".to_string(),
-        email: "test@test.com".to_string(),
-    };
-    
-    liboxen::repositories::commits::commit_writer::commit_with_user(&repo, "Add CSV data", &user)?;
-    
-    Ok(repo_dir)
+    Ok(result.repo_dir)
 }
 
 /// Create an initialized repository with test user and files
 #[allow(dead_code)]
 pub async fn make_initialized_repo_with_test_files(base_dir: &std::path::Path) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
-    let repo_dir = base_dir.join("test_user").join("test_repo");
-    std::fs::create_dir_all(&repo_dir)?;
+    let result = TestRepoBuilder::new()
+        .base_dir(base_dir)
+        .repo_name("test_repo")
+        .user_name("Test User")
+        .user_email("test@example.com")
+        .commit_message("Initial commit with test files")
+        .add_text_file("test.txt")
+        .add_data_csv_file("data.csv")
+        .build()
+        .await?;
     
-    // Initialize repository programmatically
-    let repo = liboxen::repositories::init(&repo_dir)?;
-    
-    // Create test files
-    let test_content = "Hello from Oxen integration test!\nThis is real file content.";
-    std::fs::write(repo_dir.join("test.txt"), test_content)?;
-    
-    let csv_content = "name,age,city\nAlice,30,New York\nBob,25,San Francisco\nCharlie,35,Chicago";
-    std::fs::write(repo_dir.join("data.csv"), csv_content)?;
-    
-    // Add files and commit with user info
-    liboxen::repositories::add(&repo, &repo_dir.join("test.txt"))?;
-    liboxen::repositories::add(&repo, &repo_dir.join("data.csv"))?;
-    
-    let user = liboxen::model::User {
-        name: "Test User".to_string(),
-        email: "test@example.com".to_string(),
-    };
-    
-    liboxen::repositories::commits::commit_writer::commit_with_user(&repo, "Initial commit with test files", &user)?;
-    
-    Ok(repo_dir)
+    Ok(result.repo_dir)
 }
 
 /// Create an initialized repository with test user and CSV file using in-memory storage
 #[allow(dead_code)]
 pub async fn make_initialized_repo_with_test_user_in_memory(base_dir: &std::path::Path) -> Result<(std::path::PathBuf, liboxen::model::LocalRepository), Box<dyn std::error::Error>> {
-    let repo_dir = base_dir.join("test_user").join("csv_repo");
-    std::fs::create_dir_all(&repo_dir)?;
+    let result = TestRepoBuilder::new()
+        .base_dir(base_dir)
+        .repo_name("csv_repo")
+        .user_name("Test")
+        .user_email("test@test.com")
+        .commit_message("Add CSV data")
+        .add_csv_file("products.csv")
+        .use_in_memory_storage(true)
+        .build()
+        .await?;
     
-    // Initialize repository with in-memory storage using composition
-    let repo = init_repo_with_in_memory_storage(&repo_dir)?;
-    
-    // Create CSV content
-    let csv_content = "product,price,category\nLaptop,999.99,Electronics\nChair,149.50,Furniture\nBook,19.99,Education";
-    let csv_path = repo_dir.join("products.csv");
-    
-    // Write CSV file temporarily - the add operation will read this and store content in memory
-    std::fs::write(&csv_path, csv_content)?;
-    
-    // Add file and commit with user info
-    // The add operation will read the file and store its content in the in-memory version store
-    liboxen::repositories::add(&repo, &csv_path)?;
-    
-    let user = liboxen::model::User {
-        name: "Test".to_string(),
-        email: "test@test.com".to_string(),
-    };
-    
-    liboxen::repositories::commits::commit_writer::commit_with_user(&repo, "Add CSV data", &user)?;
-    
-    Ok((repo_dir, repo))
+    Ok((result.repo_dir, result.repo.unwrap()))
 }
 
 /// Create an initialized repository with in-memory storage for testing
 #[allow(dead_code)]
 pub async fn make_initialized_repo_with_in_memory_storage(base_dir: &std::path::Path) -> Result<(std::path::PathBuf, liboxen::model::LocalRepository), Box<dyn std::error::Error>> {
-    let repo_dir = base_dir.join("test_user").join("memory_repo");
-    std::fs::create_dir_all(&repo_dir)?;
+    let result = TestRepoBuilder::new()
+        .base_dir(base_dir)
+        .repo_name("memory_repo")
+        .use_in_memory_storage(true)
+        .build()
+        .await?;
     
-    // Initialize repository with in-memory storage using composition
-    let repo = init_repo_with_in_memory_storage(&repo_dir)?;
-    
-    Ok((repo_dir, repo))
+    Ok((result.repo_dir, result.repo.unwrap()))
 }
 
 /// Helper function to create test environment with auto-port allocation
@@ -304,31 +422,19 @@ pub async fn create_test_environment_with_auto_port() -> Result<(std::path::Path
 /// Create an initialized repository with test files using in-memory storage
 #[allow(dead_code)]
 pub async fn make_initialized_repo_with_test_files_in_memory(base_dir: &std::path::Path) -> Result<(std::path::PathBuf, liboxen::model::LocalRepository), Box<dyn std::error::Error>> {
-    let repo_dir = base_dir.join("test_user").join("memory_test_repo");
-    std::fs::create_dir_all(&repo_dir)?;
+    let result = TestRepoBuilder::new()
+        .base_dir(base_dir)
+        .repo_name("memory_test_repo")
+        .user_name("Test User")
+        .user_email("test@example.com")
+        .commit_message("Initial commit with test files")
+        .add_text_file("test.txt")
+        .add_data_csv_file("data.csv")
+        .use_in_memory_storage(true)
+        .build()
+        .await?;
     
-    // Initialize repository with in-memory storage using composition
-    let repo = init_repo_with_in_memory_storage(&repo_dir)?;
-    
-    // Create test files
-    let test_content = "Hello from Oxen integration test!\nThis is real file content.";
-    std::fs::write(repo_dir.join("test.txt"), test_content)?;
-    
-    let csv_content = "name,age,city\nAlice,30,New York\nBob,25,San Francisco\nCharlie,35,Chicago";
-    std::fs::write(repo_dir.join("data.csv"), csv_content)?;
-    
-    // Add files and commit with user info
-    liboxen::repositories::add(&repo, &repo_dir.join("test.txt"))?;
-    liboxen::repositories::add(&repo, &repo_dir.join("data.csv"))?;
-    
-    let user = liboxen::model::User {
-        name: "Test User".to_string(),
-        email: "test@example.com".to_string(),
-    };
-    
-    liboxen::repositories::commits::commit_writer::commit_with_user(&repo, "Initial commit with test files", &user)?;
-    
-    Ok((repo_dir, repo))
+    Ok((result.repo_dir, result.repo.unwrap()))
 }
 
 /// Helper function to initialize a repository with in-memory storage using composition

@@ -1,28 +1,19 @@
-use crate::common::TestServer;
-use std::time::Duration;
+use crate::common::TestEnvironment;
 
 /// Integration test: Validate PUT path requirements
 /// Tests the "Target path must be a directory" behavior specifically
 #[tokio::test]
 async fn test_put_path_validation() {
-    // Create minimal test environment
-    let unique_id = std::thread::current().id();
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let test_dir = std::env::temp_dir().join(format!("oxen_path_validation_{:?}_{}", unique_id, timestamp));
-    let _ = std::fs::remove_dir_all(&test_dir);
-    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
-
-    // Start server without creating a repository - this tests the validation logic
-    let server = TestServer::start_with_sync_dir(&test_dir, 3020).await
-        .expect("Failed to start test server");
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
+    // Create minimal test environment without a repository
+    let env = TestEnvironment::builder()
+        .test_name("path_validation")
+        .without_repo()
+        .timeout_secs(5)
         .build()
-        .expect("Failed to create HTTP client");
+        .await
+        .expect("Failed to create test environment");
+    
+    let (_test_dir, server, client) = env.into_parts();
 
     println!("=== Testing PUT Path Validation ===");
     
@@ -122,8 +113,6 @@ async fn test_put_path_validation() {
     assert!(status.is_client_error() || status.is_server_error(), 
         "PUT should fail with repo not found - status: {}", status);
     
-    // Clean up
-    let _ = std::fs::remove_dir_all(&test_dir);
     
     println!("\n=== Key Validation Insights ===");
     println!("1. PUT endpoint validates repository existence first");

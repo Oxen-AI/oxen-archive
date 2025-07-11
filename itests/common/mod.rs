@@ -15,6 +15,7 @@ pub use test_repository_builder::TestRepositoryBuilder;
 pub mod port_leaser;
 pub use port_leaser::{TestPortAllocator, PortLease};
 
+
 pub struct TestServer {
     child: Child,
     base_url: String,
@@ -23,7 +24,7 @@ pub struct TestServer {
 
 impl TestServer {
     /// Start a real oxen-server process with custom sync directory
-    pub async fn start_with_sync_dir(sync_dir: &std::path::Path, port: u16) -> Result<Self, Box<dyn std::error::Error>> {
+    async fn start_server_impl(sync_dir: &std::path::Path, port: u16, port_lease: Option<PortLease>) -> Result<Self, Box<dyn std::error::Error>> {
         // Create the sync directory
         std::fs::create_dir_all(&sync_dir)?;
         
@@ -71,11 +72,15 @@ impl TestServer {
             if let Ok(response) = client.get(&format!("{}/api/health", base_url)).send().await {
                 if response.status().is_success() {
                     let elapsed = start_time.elapsed();
-                    println!("Server started in {:?} (attempt {})", elapsed, i + 1);
+                    let port_info = match &port_lease {
+                        Some(_) => format!(" on auto-port {}", port),
+                        None => String::new(),
+                    };
+                    println!("Server started in {:?} (attempt {}){}", elapsed, i + 1, port_info);
                     return Ok(TestServer {
                         child,
                         base_url,
-                        _port_lease: None, // Manual port, no lease needed
+                        _port_lease: port_lease,
                     });
                 }
             }
@@ -85,6 +90,10 @@ impl TestServer {
         // If we get here, server didn't start properly
         let _ = child.kill();
         Err("Server failed to start or health check failed".into())
+    }
+
+    pub async fn start_with_sync_dir(sync_dir: &std::path::Path, port: u16) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::start_server_impl(sync_dir, port, None).await
     }
     
     /// Start a real oxen-server process with automatic port allocation
@@ -96,67 +105,7 @@ impl TestServer {
         
         let port = port_lease.port();
         
-        // Create the sync directory
-        std::fs::create_dir_all(&sync_dir)?;
-        
-        // Find the oxen-server binary
-        let server_path = std::env::current_dir()?
-            .join("target")
-            .join("debug")
-            .join("oxen-server");
-            
-        if !server_path.exists() {
-            return Err("oxen-server binary not found. Run 'cargo build' first".into());
-        }
-        
-        // Start the server process
-        let mut child = Command::new(server_path)
-            .arg("start")
-            .arg("--ip")
-            .arg("127.0.0.1")
-            .arg("--port")
-            .arg(&port.to_string())
-            .env("SYNC_DIR", &sync_dir)
-            .stdout(Stdio::null()) // Suppress output to avoid hanging
-            .stderr(Stdio::null())
-            .spawn()?;
-            
-        // Check if process is still running
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                return Err(format!("Server process exited early with status: {}", status).into());
-            }
-            Ok(None) => {
-                // Process is still running, good
-            }
-            Err(e) => {
-                return Err(format!("Error checking server process: {}", e).into());
-            }
-        }
-        
-        // Try to connect to health endpoint to verify server is ready
-        let client = reqwest::Client::new();
-        let base_url = format!("http://127.0.0.1:{}", port);
-        let start_time = std::time::Instant::now();
-        
-        for i in 0..1000 {
-            if let Ok(response) = client.get(&format!("{}/api/health", base_url)).send().await {
-                if response.status().is_success() {
-                    let elapsed = start_time.elapsed();
-                    println!("Server started in {:?} (attempt {}) on auto-port {}", elapsed, i + 1, port);
-                    return Ok(TestServer {
-                        child,
-                        base_url,
-                        _port_lease: Some(port_lease), // Keep lease alive for server lifetime
-                    });
-                }
-            }
-            sleep(Duration::from_millis(5)).await;
-        }
-        
-        // If we get here, server didn't start properly
-        let _ = child.kill();
-        Err("Server failed to start or health check failed".into())
+        Self::start_server_impl(sync_dir, port, Some(port_lease)).await
     }
     
     /// Get the base URL for this test server
@@ -389,34 +338,176 @@ pub async fn make_initialized_repo_with_in_memory_storage(base_dir: &std::path::
     Ok((result.repo_dir, result.repo.unwrap()))
 }
 
+/// Test environment configuration builder
+#[derive(Default)]
+pub struct TestEnvironmentBuilder {
+    timeout_secs: Option<u64>,
+    create_repo: Option<bool>,
+    repo_type: Option<RepoType>,
+    test_name: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum RepoType {
+    WithTestFiles,
+    WithTestUser,
+    WithCsv,
+    Empty,
+}
+
+impl TestEnvironmentBuilder {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn timeout_secs(mut self, timeout: u64) -> Self {
+        self.timeout_secs = Some(timeout);
+        self
+    }
+
+    pub fn with_repo(mut self, repo_type: RepoType) -> Self {
+        self.create_repo = Some(true);
+        self.repo_type = Some(repo_type);
+        self
+    }
+
+    pub fn without_repo(mut self) -> Self {
+        self.create_repo = Some(false);
+        self
+    }
+
+    pub fn test_name<S: Into<String>>(mut self, name: S) -> Self {
+        self.test_name = Some(name.into());
+        self
+    }
+
+    pub async fn build(self) -> Result<TestEnvironment, Box<dyn std::error::Error>> {
+        let timeout = self.timeout_secs.unwrap_or(10);
+        let create_repo = self.create_repo.unwrap_or(true);
+        let test_name = self.test_name.unwrap_or_else(|| "test".to_string());
+        
+        let unique_id = std::thread::current().id();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let test_dir = std::env::temp_dir().join(format!("oxen_{}_{:?}_{}", test_name, unique_id, timestamp));
+        let _ = std::fs::remove_dir_all(&test_dir);
+        std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+        
+        // Create repository if requested
+        if create_repo {
+            let repo_type = self.repo_type.unwrap_or(RepoType::WithTestFiles);
+            let _result = match repo_type {
+                RepoType::WithTestFiles => {
+                    make_initialized_repo_with_test_files_in_memory(&test_dir).await?
+                }
+                RepoType::WithTestUser => {
+                    make_initialized_repo_with_test_user_in_memory(&test_dir).await?
+                }
+                RepoType::WithCsv => {
+                    let result = TestRepoBuilder::new()
+                        .base_dir(&test_dir)
+                        .repo_name("csv_repo")
+                        .add_csv_file("products.csv")
+                        .use_in_memory_storage(true)
+                        .build()
+                        .await?;
+                    (result.repo_dir, result.repo.unwrap())
+                }
+                RepoType::Empty => {
+                    let result = TestRepoBuilder::new()
+                        .base_dir(&test_dir)
+                        .repo_name("empty_repo")
+                        .use_in_memory_storage(true)
+                        .build()
+                        .await?;
+                    (result.repo_dir, result.repo.unwrap())
+                }
+            };
+        }
+        
+        // Start oxen-server with auto-port allocation
+        let server = TestServer::start_with_auto_port(&test_dir).await
+            .expect("Failed to start test server");
+        
+        // Create HTTP client
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(timeout))
+            .build()
+            .expect("Failed to create HTTP client");
+        
+        Ok(TestEnvironment {
+            test_dir,
+            server,
+            client,
+            cleanup: true,
+        })
+    }
+}
+
+/// RAII Test environment that automatically cleans up
+pub struct TestEnvironment {
+    test_dir: std::path::PathBuf,
+    server: TestServer,
+    client: reqwest::Client,
+    cleanup: bool,
+}
+
+impl TestEnvironment {
+    pub fn builder() -> TestEnvironmentBuilder {
+        TestEnvironmentBuilder::new()
+    }
+
+    pub fn test_dir(&self) -> &std::path::Path {
+        &self.test_dir
+    }
+
+    pub fn server(&self) -> &TestServer {
+        &self.server
+    }
+
+    pub fn client(&self) -> &reqwest::Client {
+        &self.client
+    }
+
+    pub fn into_parts(mut self) -> (std::path::PathBuf, TestServer, reqwest::Client) {
+        // Disable cleanup since caller is taking ownership
+        self.cleanup = false;
+        
+        // Use ManuallyDrop to prevent Drop from running
+        let manual_drop = std::mem::ManuallyDrop::new(self);
+        
+        // Safely move out of ManuallyDrop
+        unsafe {
+            (
+                std::ptr::read(&manual_drop.test_dir),
+                std::ptr::read(&manual_drop.server),
+                std::ptr::read(&manual_drop.client),
+            )
+        }
+    }
+}
+
+impl Drop for TestEnvironment {
+    fn drop(&mut self) {
+        if self.cleanup {
+            let _ = std::fs::remove_dir_all(&self.test_dir);
+        }
+    }
+}
+
 /// Helper function to create test environment with auto-port allocation
 /// This replaces the manual create_test_environment(port) pattern
 #[allow(dead_code)]
 pub async fn create_test_environment_with_auto_port() -> Result<(std::path::PathBuf, TestServer, reqwest::Client), Box<dyn std::error::Error>> {
-    let unique_id = std::thread::current().id();
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let test_dir = std::env::temp_dir().join(format!("oxen_auto_port_test_{:?}_{}", unique_id, timestamp));
-    let _ = std::fs::remove_dir_all(&test_dir);
-    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
-    
-    // Create repository with test files using programmatic API with in-memory storage
-    let (_repo_dir, _repo) = make_initialized_repo_with_test_files_in_memory(&test_dir).await
-        .expect("Failed to create initialized repo");
-    
-    // Start oxen-server with auto-port allocation
-    let server = TestServer::start_with_auto_port(&test_dir).await
-        .expect("Failed to start test server");
-    
-    // Create HTTP client
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
+    let env = TestEnvironment::builder()
+        .test_name("auto_port_test")
+        .with_repo(RepoType::WithTestFiles)
         .build()
-        .expect("Failed to create HTTP client");
+        .await?;
     
-    Ok((test_dir, server, client))
+    Ok(env.into_parts())
 }
 
 /// Create an initialized repository with test files using in-memory storage

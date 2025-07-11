@@ -1,36 +1,18 @@
-use crate::common::TestServer;
-use std::time::Duration;
-
-/// Helper function to create test environment (shared setup)
-async fn create_test_environment(port: u16) -> (std::path::PathBuf, TestServer, reqwest::Client) {
-    let unique_id = std::thread::current().id();
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let test_dir = std::env::temp_dir().join(format!("oxen_naming_test_{:?}_{}", unique_id, timestamp));
-    let _ = std::fs::remove_dir_all(&test_dir);
-    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
-
-    let repo_path = test_dir.join("test_user").join("test_repo");
-    std::fs::create_dir_all(&repo_path).expect("Failed to create repo directory");
-
-    let server = TestServer::start_with_sync_dir(&test_dir, port).await
-        .expect("Failed to start test server");
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .expect("Failed to create HTTP client");
-
-    (test_dir, server, client)
-}
+use crate::common::TestEnvironment;
 
 /// Test PUT with form field name as filename
 /// Shows that the multipart form field name becomes the filename
 #[tokio::test]
 async fn test_put_with_form_field_name_as_filename() {
-    let (test_dir, server, client) = create_test_environment(3015).await;
+    let env = TestEnvironment::builder()
+        .test_name("put_form_field_name")
+        .without_repo()
+        .timeout_secs(5)
+        .build()
+        .await
+        .expect("Failed to create test environment");
+    
+    let (_test_dir, server, client) = env.into_parts();
     
     println!("Testing PUT with form field name as filename");
     let form_data = reqwest::multipart::Form::new()
@@ -52,8 +34,6 @@ async fn test_put_with_form_field_name_as_filename() {
     assert!(status.is_client_error() || status.is_server_error(),
         "Expected error response for non-existent repo");
     
-    // Clean up
-    let _ = std::fs::remove_dir_all(&test_dir);
     println!("✅ Form field name as filename test completed");
 }
 
@@ -61,7 +41,15 @@ async fn test_put_with_form_field_name_as_filename() {
 /// Shows that .file_name() overrides the field name
 #[tokio::test]
 async fn test_put_with_explicit_filename() {
-    let (test_dir, server, client) = create_test_environment(3016).await;
+    let env = TestEnvironment::builder()
+        .test_name("put_explicit_filename")
+        .without_repo()
+        .timeout_secs(5)
+        .build()
+        .await
+        .expect("Failed to create test environment");
+    
+    let (_test_dir, server, client) = env.into_parts();
     
     println!("Testing PUT with explicit filename in multipart");
     let file_part = reqwest::multipart::Part::text("Content with explicit filename")
@@ -87,8 +75,6 @@ async fn test_put_with_explicit_filename() {
     assert!(status.is_client_error() || status.is_server_error(),
         "Expected error response for non-existent repo");
     
-    // Clean up
-    let _ = std::fs::remove_dir_all(&test_dir);
     println!("✅ Explicit filename test completed");
 }
 
@@ -96,7 +82,15 @@ async fn test_put_with_explicit_filename() {
 /// Shows that multiple files can be uploaded in a single PUT request
 #[tokio::test]
 async fn test_put_multiple_files() {
-    let (test_dir, server, client) = create_test_environment(3017).await;
+    let env = TestEnvironment::builder()
+        .test_name("put_multiple_files")
+        .without_repo()
+        .timeout_secs(5)
+        .build()
+        .await
+        .expect("Failed to create test environment");
+    
+    let (_test_dir, server, client) = env.into_parts();
     
     println!("Testing PUT with multiple files");
     let form_data = reqwest::multipart::Form::new()
@@ -120,8 +114,6 @@ async fn test_put_multiple_files() {
     assert!(status.is_client_error() || status.is_server_error(),
         "Expected error response for non-existent repo");
     
-    // Clean up
-    let _ = std::fs::remove_dir_all(&test_dir);
     println!("✅ Multiple files test completed");
 }
 
@@ -129,7 +121,15 @@ async fn test_put_multiple_files() {
 /// Shows that files can be uploaded to the repository root
 #[tokio::test]
 async fn test_put_to_root_directory() {
-    let (test_dir, server, client) = create_test_environment(3018).await;
+    let env = TestEnvironment::builder()
+        .test_name("put_to_root")
+        .without_repo()
+        .timeout_secs(5)
+        .build()
+        .await
+        .expect("Failed to create test environment");
+    
+    let (_test_dir, server, client) = env.into_parts();
     
     println!("Testing PUT to root directory");
     let form_data = reqwest::multipart::Form::new()
@@ -151,8 +151,6 @@ async fn test_put_to_root_directory() {
     assert!(status.is_client_error() || status.is_server_error(),
         "Expected error response for non-existent repo");
     
-    // Clean up
-    let _ = std::fs::remove_dir_all(&test_dir);
     println!("✅ Root directory test completed");
 }
 

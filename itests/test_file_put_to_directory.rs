@@ -1,39 +1,17 @@
-use crate::common::{TestServer, make_initialized_repo_with_test_files_in_memory};
-use std::time::Duration;
-
-/// Helper function to create test environment (shared setup)
-async fn create_test_environment(port: u16) -> (std::path::PathBuf, TestServer, reqwest::Client) {
-    let unique_id = std::thread::current().id();
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let test_dir = std::env::temp_dir().join(format!("oxen_put_test_{:?}_{}_{}", unique_id, timestamp, port));
-    let _ = std::fs::remove_dir_all(&test_dir);
-    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
-
-    // Create repository with test files using the working approach from other tests
-    let (_repo_dir, _repo) = make_initialized_repo_with_test_files_in_memory(&test_dir).await
-        .expect("Failed to create initialized repo");
-
-    // Start oxen-server
-    let server = TestServer::start_with_sync_dir(&test_dir, port).await
-        .expect("Failed to start test server");
-
-    // Create HTTP client
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .expect("Failed to create HTTP client");
-
-    (test_dir, server, client)
-}
+use crate::common::{TestEnvironment, RepoType};
 
 /// Test PUT to file path should fail
 /// Tests that PUTting to a file path (not directory) returns appropriate error
 #[tokio::test]
 async fn test_put_to_file_path_should_fail() {
-    let (test_dir, server, client) = create_test_environment(3010).await;
+    let env = TestEnvironment::builder()
+        .test_name("put_to_file_path")
+        .with_repo(RepoType::WithTestFiles)
+        .build()
+        .await
+        .expect("Failed to create test environment");
+    
+    let (_test_dir, server, client) = env.into_parts();
     
     println!("Testing PUT to existing file path (should fail)...");
     let form_data = reqwest::multipart::Form::new()
@@ -67,15 +45,20 @@ async fn test_put_to_file_path_should_fail() {
         println!("⚠️  Got lock error (repository access conflict in test environment)");
     }
     
-    // Clean up
-    let _ = std::fs::remove_dir_all(&test_dir);
 }
 
 /// Test PUT to directory path
 /// Tests that PUTting to a directory path works or gives reasonable error
 #[tokio::test]
 async fn test_put_to_directory_path() {
-    let (test_dir, server, client) = create_test_environment(3011).await;
+    let env = TestEnvironment::builder()
+        .test_name("put_to_directory")
+        .with_repo(RepoType::WithTestFiles)
+        .build()
+        .await
+        .expect("Failed to create test environment");
+    
+    let (_test_dir, server, client) = env.into_parts();
     
     println!("Testing PUT to directory path...");
     let form_data = reqwest::multipart::Form::new()
@@ -107,15 +90,20 @@ async fn test_put_to_directory_path() {
         println!("⚠️  PUT to directory failed (may be expected in test environment): {}", body);
     }
     
-    // Clean up
-    let _ = std::fs::remove_dir_all(&test_dir);
 }
 
 /// Test PUT with multipart file upload
 /// Tests that multipart file upload functionality works correctly
 #[tokio::test]
 async fn test_put_multipart_file_upload() {
-    let (test_dir, server, client) = create_test_environment(3012).await;
+    let env = TestEnvironment::builder()
+        .test_name("put_multipart_upload")
+        .with_repo(RepoType::WithTestFiles)
+        .build()
+        .await
+        .expect("Failed to create test environment");
+    
+    let (_test_dir, server, client) = env.into_parts();
     
     println!("Testing PUT with multipart file upload...");
     let file_content = "name,age,city\nCharlie,28,Seattle\nDiana,32,Portland";
@@ -144,15 +132,20 @@ async fn test_put_multipart_file_upload() {
         println!("⚠️  Multipart PUT failed (may be expected in test environment): {}", body);
     }
     
-    // Clean up
-    let _ = std::fs::remove_dir_all(&test_dir);
 }
 
 /// Test directory listing after PUT attempts
 /// Tests that directory structure remains accessible after PUT operations
 #[tokio::test]
 async fn test_directory_listing_after_put() {
-    let (test_dir, server, client) = create_test_environment(3013).await;
+    let env = TestEnvironment::builder()
+        .test_name("directory_listing_after_put")
+        .with_repo(RepoType::WithTestFiles)
+        .build()
+        .await
+        .expect("Failed to create test environment");
+    
+    let (_test_dir, server, client) = env.into_parts();
     
     // First do a PUT attempt (doesn't matter if it succeeds or fails)
     let form_data = reqwest::multipart::Form::new()
@@ -182,7 +175,5 @@ async fn test_directory_listing_after_put() {
     assert!(status.as_u16() >= 200 && status.as_u16() <= 500, 
         "Files listing should be accessible - status: {}, body: {}", status, body);
     
-    // Clean up
-    let _ = std::fs::remove_dir_all(&test_dir);
     println!("✅ Directory listing test completed!");
 }

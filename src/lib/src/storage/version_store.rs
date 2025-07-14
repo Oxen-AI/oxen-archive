@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use bytes::Bytes;
+use futures::Stream;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncSeek};
 
@@ -133,6 +135,28 @@ pub trait VersionStore: Debug + Send + Sync + 'static {
     /// # Arguments
     /// * `hash` - The content hash of the version to retrieve
     fn get_version_path(&self, hash: &str) -> Result<PathBuf, OxenError>;
+
+    /// Get a version file as a stream of bytes
+    ///    
+    /// # Arguments
+    /// * `hash` - The content hash of the version to retrieve
+    async fn get_version_stream(
+        &self,
+        hash: &str,
+    ) -> Result<Box<dyn Stream<Item = Result<Bytes, OxenError>> + Send + Unpin>, OxenError>;
+
+    /// Get a chunk of a version file as a stream of bytes
+    ///    
+    /// # Arguments
+    /// * `hash` - The content hash of the version to retrieve
+    /// * `offset` - The starting byte position of the chunk
+    /// * `size` - The chunk size
+    async fn get_version_chunk_stream(
+        &self,
+        hash: &str,
+        offset: u64,
+        size: u64,
+    ) -> Result<Box<dyn Stream<Item = Result<Bytes, OxenError>> + Send + Unpin>, OxenError>;
 
     /// Copy a version to a destination path
     ///

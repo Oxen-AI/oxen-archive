@@ -1,5 +1,7 @@
 use crate::error::OxenError;
 use async_trait::async_trait;
+use bytes::Bytes;
+use futures::Stream;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -84,6 +86,14 @@ impl VersionStore for S3VersionStore {
         Err(OxenError::basic_str("S3VersionStore not yet implemented"))
     }
 
+    async fn get_version_stream(
+        &self,
+        _hash: &str,
+    ) -> Result<Box<dyn Stream<Item = Result<Bytes, OxenError>> + Send + Unpin>, OxenError> {
+        // TODO: Implement S3 version stream retrieval
+        Err(OxenError::basic_str("S3VersionStore not yet implemented"))
+    }
+
     async fn copy_version_to_path(&self, _hash: &str, _dest_path: &Path) -> Result<(), OxenError> {
         // TODO: Implement S3 version copying to path
         Err(OxenError::basic_str("S3VersionStore not yet implemented"))
@@ -106,6 +116,16 @@ impl VersionStore for S3VersionStore {
         _size: u64,
     ) -> Result<Vec<u8>, OxenError> {
         // TODO: Implement S3 version chunk retrieval
+        Err(OxenError::basic_str("S3VersionStore not yet implemented"))
+    }
+
+    async fn get_version_chunk_stream(
+        &self,
+        _hash: &str,
+        _offset: u64,
+        _size: u64,
+    ) -> Result<Box<dyn Stream<Item = Result<Bytes, OxenError>> + Send + Unpin>, OxenError> {
+        // TODO: Implement S3 version chunk stream retrieval
         Err(OxenError::basic_str("S3VersionStore not yet implemented"))
     }
 

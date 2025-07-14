@@ -7,7 +7,7 @@ use crate::params::{app_data, path_param};
 use actix_multipart::Multipart;
 use actix_web::{Error, HttpRequest, HttpResponse};
 use flate2::read::GzDecoder;
-use futures_util::TryStreamExt as _;
+use futures_util::{StreamExt, TryStreamExt as _};
 use liboxen::error::OxenError;
 use liboxen::model::LocalRepository;
 use liboxen::view::versions::{VersionFile, VersionFileResponse};
@@ -54,9 +54,17 @@ pub async fn download(req: HttpRequest) -> Result<HttpResponse, OxenHttpError> {
 
     let version_store = repo.version_store()?;
 
-    // TODO: stream the file
-    let file_data = version_store.get_version(&version_id).await?;
-    Ok(HttpResponse::Ok().body(file_data))
+    // Stream the file for better memory efficiency
+    let stream = version_store.get_version_stream(&version_id).await?;
+    
+    // Convert Stream<Item = Result<Bytes, OxenError>> to actix_web::web::Bytes stream
+    let actix_stream = stream.map(|result| {
+        result.map_err(|e| actix_web::error::ErrorInternalServerError(e))
+    });
+
+    Ok(HttpResponse::Ok()
+        .content_type("application/octet-stream")
+        .streaming(actix_stream))
 }
 
 pub async fn batch_upload(
@@ -274,6 +282,8 @@ mod tests {
 
         let resp = actix_web::test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        let content_type = resp.headers().get("content-type").unwrap();
+        assert_eq!(content_type, "application/octet-stream");
         let bytes = actix_http::body::to_bytes(resp.into_body()).await.unwrap();
         assert_eq!(bytes, "Hello");
 

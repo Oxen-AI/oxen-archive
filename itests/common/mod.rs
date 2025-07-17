@@ -560,8 +560,9 @@ impl TestEnvironment {
                 .unwrap()
                 .as_secs() as usize,
         };
-        
-        // Use a fixed secret key for testing
+
+        // IMPORTANT: This is a test-only JWT implementation
+        // Production systems should use proper key management
         let secret = "test-secret-key-for-oxen-testing-only";
         let token = encode(
             &Header::default(),

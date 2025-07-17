@@ -17,7 +17,7 @@ This directory contains HTTP-based integration tests for the Oxen server. These 
 
 ## Architecture: What's Real vs Mocked
 
-```
+```text
                     🌐 HTTP Requests (REAL)
                     ┌─────────────────────┐
                     │   reqwest::Client   │
@@ -211,7 +211,7 @@ cargo test test_csv_file_upload -- --nocapture
 
 ### **6. Failure Investigation Speed**
 - **Immediate pinpointing**: Failure in `test_put_file_naming_behavior` → examine ONLY that test
-- **Full stack traces** include both client and server code paths
+- **Full-stack traces** include both client and server code paths
 - **No log noise** from other tests running against shared server
 
 ## ⚡ **Performance & Reliability Advantages**

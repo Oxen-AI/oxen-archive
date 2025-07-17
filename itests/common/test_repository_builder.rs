@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use liboxen::error::OxenError;
 use liboxen::model::{LocalRepository, User};
 use liboxen::repositories;
-use liboxen::storage::VersionStore;
 // TODO: Re-enable once in-memory storage is fixed
 // use super::InMemoryVersionStore;
 
@@ -89,7 +87,9 @@ impl TestRepositoryBuilder {
                 .unwrap()
                 .as_nanos();
             let temp_dir = std::env::temp_dir().join(format!("oxen_test_repos_{:?}_{}", unique_id, timestamp));
-            let _ = std::fs::remove_dir_all(&temp_dir);
+            if let Err(e) = std::fs::remove_dir_all(&temp_dir) {
+                log::debug!("Failed to remove temp directory {:?}: {}", temp_dir, e);
+            }
             temp_dir
         });
 
@@ -205,6 +205,7 @@ impl TestRepository {
     }
 
     /// Commit changes with specific user
+    #[allow(dead_code)]
     pub fn commit_with_user(&self, message: &str, user: &User) -> Result<(), OxenError> {
         repositories::commits::commit_writer::commit_with_user(&self.repo, message, user).map(|_| ())
     }

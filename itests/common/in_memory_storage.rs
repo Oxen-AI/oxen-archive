@@ -6,8 +6,10 @@ use std::fmt::Debug;
 use std::panic::RefUnwindSafe;
 
 use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncReadExt};
 use liboxen::error::OxenError;
 use liboxen::storage::version_store::{ReadSeek, VersionStore};
+use liboxen::util;
 
 /// In-memory implementation of VersionStore for fast integration tests
 /// Stores all data in HashMaps instead of the filesystem
@@ -106,9 +108,10 @@ impl VersionStore for InMemoryVersionStore {
         self.store_version(hash, &data).await
     }
 
-    async fn store_version_from_reader(&self, hash: &str, reader: &mut dyn Read) -> Result<(), OxenError> {
+    async fn store_version_from_reader(&self, hash: &str, reader: &mut (dyn AsyncRead + Send + Unpin)) -> Result<(), OxenError> {
         let mut data = Vec::new();
         reader.read_to_end(&mut data)
+            .await
             .map_err(|e| OxenError::IO(e))?;
         self.store_version(hash, &data).await
     }
@@ -163,7 +166,7 @@ impl VersionStore for InMemoryVersionStore {
         }
     }
 
-    fn combine_version_chunks(&self, hash: &str, _cleanup: bool) -> Result<PathBuf, OxenError> {
+    async fn combine_version_chunks(&self, hash: &str, _cleanup: bool) -> Result<PathBuf, OxenError> {
         let chunks = self.chunks
             .lock()
             .map_err(|e| OxenError::basic_str(format!("Failed to acquire lock: {}", e)))?;
@@ -201,7 +204,7 @@ impl VersionStore for InMemoryVersionStore {
         Ok(Box::new(MemoryReader::new(data)))
     }
 
-    fn get_version(&self, hash: &str) -> Result<Vec<u8>, OxenError> {
+    async fn get_version(&self, hash: &str) -> Result<Vec<u8>, OxenError> {
         let storage = self.storage
             .lock()
             .map_err(|e| OxenError::basic_str(format!("Failed to acquire lock: {}", e)))?;
@@ -221,10 +224,9 @@ impl VersionStore for InMemoryVersionStore {
         }
     }
 
-    fn copy_version_to_path(&self, hash: &str, dest_path: &Path) -> Result<(), OxenError> {
-        let data = self.get_version(hash)?;
-        std::fs::write(dest_path, data)
-            .map_err(|e| OxenError::IO(e))?;
+    async fn copy_version_to_path(&self, hash: &str, dest_path: &Path) -> Result<(), OxenError> {
+        let data = self.get_version(hash).await?;
+        util::fs::write(dest_path, data)?;
         Ok(())
     }
 
@@ -251,7 +253,7 @@ impl VersionStore for InMemoryVersionStore {
         Ok(())
     }
 
-    fn list_versions(&self) -> Result<Vec<String>, OxenError> {
+    async fn list_versions(&self) -> Result<Vec<String>, OxenError> {
         let storage = self.storage
             .lock()
             .map_err(|e| OxenError::basic_str(format!("Failed to acquire lock: {}", e)))?;
@@ -293,11 +295,11 @@ mod tests {
         assert!(store.store_version(hash, data).await.is_ok());
         assert!(store.version_exists(hash).unwrap());
         
-        let retrieved = store.get_version(hash).unwrap();
+        let retrieved = store.get_version(hash).await.unwrap();
         assert_eq!(retrieved, data);
         
         // Test list versions
-        let versions = store.list_versions().unwrap();
+        let versions = store.list_versions().await.unwrap();
         assert!(versions.contains(&hash.to_string()));
         
         // Test deletion
@@ -322,7 +324,7 @@ mod tests {
         let _path = store.combine_version_chunks(hash, false).unwrap();
         
         // Verify combined data
-        let combined = store.get_version(hash).unwrap();
+        let combined = store.get_version(hash).await.unwrap();
         assert_eq!(combined, b"Hello, world!");
     }
 
@@ -350,7 +352,7 @@ mod tests {
         assert!(store.preload(hash, data.clone()).is_ok());
         assert!(store.version_exists(hash).unwrap());
         
-        let retrieved = store.get_version(hash).unwrap();
+        let retrieved = store.get_version(hash).await.unwrap();
         assert_eq!(retrieved, data);
     }
 
@@ -362,10 +364,10 @@ mod tests {
         store.store_version("hash1", b"data1").await.unwrap();
         store.store_version("hash2", b"data2").await.unwrap();
         
-        assert_eq!(store.list_versions().unwrap().len(), 2);
+        assert_eq!(store.list_versions().await.unwrap().len(), 2);
         
         // Clear and verify
         assert!(store.clear().is_ok());
-        assert_eq!(store.list_versions().unwrap().len(), 0);
+        assert_eq!(store.list_versions().await.unwrap().len(), 0);
     }
 }

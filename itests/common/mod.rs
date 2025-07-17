@@ -2,9 +2,7 @@
 
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
-use std::sync::Arc;
 use tokio::time::sleep;
-use liboxen::storage::VersionStore;
 // Import from the server crate - we'll need to add this as a dependency
 // use oxen_server;
 
@@ -122,6 +120,28 @@ impl TestServer {
     pub fn base_url(&self) -> &str {
         &self.base_url
     }
+    
+    /// Create a dummy TestServer instance for safe mem::replace operations
+    /// This should never be used for actual server operations
+    fn dummy() -> Self {
+        use std::process::Stdio;
+        
+        // Create a dummy child process that immediately exits
+        let mut child = std::process::Command::new("true")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("Failed to create dummy child process");
+        
+        // Wait for it to exit immediately
+        let _ = child.wait();
+        
+        Self {
+            child,
+            base_url: String::new(),
+            _port_lease: None,
+        }
+    }
 }
 
 impl Drop for TestServer {
@@ -188,6 +208,7 @@ impl TestRepoBuilder {
     }
 
     /// Add a CSV file with sample data
+    #[allow(dead_code)]
     pub fn add_csv_file<S: Into<String>>(mut self, filename: S) -> Self {
         let csv_content = "product,price,category\nLaptop,999.99,Electronics\nChair,149.50,Furniture\nBook,19.99,Education";
         self.files.push((filename.into(), csv_content.to_string()));
@@ -195,6 +216,7 @@ impl TestRepoBuilder {
     }
 
     /// Add a text file with sample data
+    #[allow(dead_code)]
     pub fn add_text_file<S: Into<String>>(mut self, filename: S) -> Self {
         let text_content = "Hello from Oxen integration test!\nThis is real file content.";
         self.files.push((filename.into(), text_content.to_string()));
@@ -202,6 +224,7 @@ impl TestRepoBuilder {
     }
 
     /// Add a sample data CSV file
+    #[allow(dead_code)]
     pub fn add_data_csv_file<S: Into<String>>(mut self, filename: S) -> Self {
         let csv_content = "name,age,city\nAlice,30,New York\nBob,25,San Francisco\nCharlie,35,Chicago";
         self.files.push((filename.into(), csv_content.to_string()));
@@ -272,16 +295,19 @@ pub struct TestRepoResult {
 
 impl TestRepoResult {
     /// Get the repository directory path
+    #[allow(dead_code)]
     pub fn path(&self) -> &std::path::Path {
         &self.repo_dir
     }
 
     /// Get the repository (if using in-memory storage)
+    #[allow(dead_code)]
     pub fn repo(&self) -> Option<&liboxen::model::LocalRepository> {
         self.repo.as_ref()
     }
 
     /// Convert to tuple for backward compatibility
+    #[allow(dead_code)]
     pub fn into_tuple(self) -> (std::path::PathBuf, Option<liboxen::model::LocalRepository>) {
         (self.repo_dir, self.repo)
     }
@@ -365,6 +391,7 @@ pub struct TestEnvironmentBuilder {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum RepoType {
     WithTestFiles,
     WithTestUser,
@@ -398,6 +425,7 @@ impl TestEnvironmentBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_bearer_token<S: Into<String>>(mut self, token: S) -> Self {
         self.bearer_token = Some(token.into());
         self
@@ -503,6 +531,7 @@ impl TestEnvironment {
     }
 
     /// Create a valid bearer token for testing
+    #[allow(dead_code)]
     pub fn create_test_bearer_token(&self) -> Result<String, Box<dyn std::error::Error>> {
         // For now, let's use the server's sync directory to create a valid token
         // We'll need to access the server's auth module through the file system
@@ -520,7 +549,7 @@ impl TestEnvironment {
         
         // For now, create a mock JWT token that matches the expected format
         // In a real implementation, this would use the server's AccessKeyManager
-        use jsonwebtoken::{encode, Header, EncodingKey, Validation, Algorithm};
+        use jsonwebtoken::{encode, Header, EncodingKey};
         use serde::{Deserialize, Serialize};
         
         #[derive(Debug, Serialize, Deserialize)]
@@ -552,14 +581,17 @@ impl TestEnvironment {
         Ok(token)
     }
 
+    #[allow(dead_code)]
     pub fn test_dir(&self) -> &std::path::Path {
         &self.test_dir
     }
 
+    #[allow(dead_code)]
     pub fn server(&self) -> &TestServer {
         &self.server
     }
 
+    #[allow(dead_code)]
     pub fn client(&self) -> &reqwest::Client {
         &self.client
     }
@@ -568,17 +600,12 @@ impl TestEnvironment {
         // Disable cleanup since caller is taking ownership
         self.cleanup = false;
         
-        // Use ManuallyDrop to prevent Drop from running
-        let manual_drop = std::mem::ManuallyDrop::new(self);
+        // Safely move out fields using mem::replace
+        let test_dir = std::mem::replace(&mut self.test_dir, std::path::PathBuf::new());
+        let server = std::mem::replace(&mut self.server, TestServer::dummy());
+        let client = std::mem::replace(&mut self.client, reqwest::Client::new());
         
-        // Safely move out of ManuallyDrop
-        unsafe {
-            (
-                std::ptr::read(&manual_drop.test_dir),
-                std::ptr::read(&manual_drop.server),
-                std::ptr::read(&manual_drop.client),
-            )
-        }
+        (test_dir, server, client)
     }
 }
 
@@ -625,6 +652,7 @@ pub async fn make_initialized_repo_with_test_files_in_memory(base_dir: &std::pat
 /// Helper function to initialize a repository with in-memory storage using composition
 /// This creates the repository structure and injects the in-memory storage
 /// TODO: Fix in-memory storage compatibility with async trait changes
+#[allow(dead_code)]
 async fn init_repo_with_in_memory_storage(repo_dir: &std::path::Path) -> Result<liboxen::model::LocalRepository, Box<dyn std::error::Error>> {
     // For now, just use regular initialization until in-memory storage is fixed
     Ok(liboxen::repositories::init(repo_dir)?)

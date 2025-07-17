@@ -26,6 +26,16 @@ async fn oxen_repo_held_csv_should_be_accessible_via_http_get() {
     // Drop the repository to release any locks
     drop(test_repo);
     
+    // Wait a moment for any background processes to complete
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    
+    // Clean up any existing lock files to prevent server startup conflicts
+    // This addresses the "Resource temporarily unavailable" error
+    let lock_file = test_dir.join("test_user/csv_repo/.oxen/refs/LOCK");
+    if lock_file.exists() {
+        let _ = std::fs::remove_file(&lock_file);
+    }
+    
     // Start oxen-server with auto-port allocation
     let server = TestServer::start_with_auto_port(&test_dir).await.expect("Failed to start test server");
     
@@ -45,8 +55,8 @@ async fn oxen_repo_held_csv_should_be_accessible_via_http_get() {
     println!("CSV HTTP GET response body: {}", body);
     
     // Verify we can make HTTP GET request over TCP/IP (integration test requirement)
-    // Accept any status code in the valid HTTP range (200-500 inclusive)
-    assert!(status.as_u16() >= 200 && status.as_u16() <= 500, 
+    // Accept only successful status codes (200-299 inclusive)
+    assert!(status.as_u16() >= 200 && status.as_u16() <= 299, 
         "HTTP GET over TCP/IP failed - status: {}, body: {}", status, body);
     
     // If successful, verify the CSV content is accessible

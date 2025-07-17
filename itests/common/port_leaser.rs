@@ -48,6 +48,7 @@ impl TestPortAllocator {
     }
     
     /// Create a new port allocator with custom range
+    #[allow(dead_code)]
     pub fn with_range(start: u16, end: u16) -> Self {
         Self {
             allocated_ports: Arc::new(Mutex::new(HashSet::new())),
@@ -107,6 +108,7 @@ impl TestPortAllocator {
     }
     
     /// Check if a specific port is currently allocated
+    #[allow(dead_code)]
     pub fn is_allocated(&self, port: u16) -> bool {
         self.allocated_ports.lock()
             .map(|allocated| allocated.contains(&port))

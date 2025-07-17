@@ -40,7 +40,7 @@ async fn test_oxen_ignore_dir() -> Result<(), OxenError> {
         test::write_txt_file_to_path(ignore_path.join("1.txt"), "I should also be ignored")?;
 
         let oxenignore_file = repo.path.join(".oxenignore");
-        test::write_txt_file_to_path(oxenignore_file, "ignoreme.txt")?;
+        test::write_txt_file_to_path(oxenignore_file, "ignoreme/")?;
 
         let status = repositories::status(&repo)?;
         // Only untracked file should be .oxenignore

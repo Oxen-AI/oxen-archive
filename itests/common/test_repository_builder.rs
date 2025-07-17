@@ -3,8 +3,6 @@ use std::path::{Path, PathBuf};
 use liboxen::error::OxenError;
 use liboxen::model::{LocalRepository, User};
 use liboxen::repositories;
-// TODO: Re-enable once in-memory storage is fixed
-// use super::InMemoryVersionStore;
 
 /// A fluent builder for creating test repositories with files and commits
 pub struct TestRepositoryBuilder {
@@ -140,10 +138,15 @@ impl TestRepositoryBuilder {
     }
 
     /// Initialize a repository with in-memory storage using composition
-    /// TODO: Fix in-memory storage compatibility with async trait changes
     async fn init_repo_with_in_memory_storage(&self, repo_dir: &Path) -> Result<LocalRepository, OxenError> {
-        // For now, just use regular initialization until in-memory storage is fixed
-        Ok(repositories::init(repo_dir)?)
+        // First initialize the repository filesystem structure
+        let _repo = repositories::init(repo_dir)?;
+        
+        // Create the repository with in-memory storage
+        let in_memory_store = std::sync::Arc::new(super::InMemoryVersionStore::new());
+        let repo = LocalRepository::with_version_store(repo_dir, in_memory_store)?;
+        
+        Ok(repo)
     }
 }
 

@@ -83,7 +83,7 @@ impl MemoryReader {
 
 impl Read for MemoryReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.cursor.read(buf)
+        std::io::Read::read(&mut self.cursor, buf)
     }
 }
 
@@ -106,6 +106,18 @@ impl VersionStore for InMemoryVersionStore {
         let data = std::fs::read(file_path)
             .map_err(|e| OxenError::IO(e))?;
         self.store_version(hash, &data).await
+    }
+
+    fn store_version_from_path_sync(&self, hash: &str, file_path: &Path) -> Result<(), OxenError> {
+        let data = std::fs::read(file_path)
+            .map_err(|e| OxenError::IO(e))?;
+        
+        // For in-memory storage, we can store synchronously
+        self.storage
+            .lock()
+            .map_err(|e| OxenError::basic_str(format!("Failed to acquire lock: {}", e)))?
+            .insert(hash.to_string(), data);
+        Ok(())
     }
 
     async fn store_version_from_reader(&self, hash: &str, reader: &mut (dyn AsyncRead + Send + Unpin)) -> Result<(), OxenError> {
@@ -134,7 +146,7 @@ impl VersionStore for InMemoryVersionStore {
         Ok(())
     }
 
-    fn get_version_chunk(&self, hash: &str, offset: u64, size: u64) -> Result<Vec<u8>, OxenError> {
+    async fn get_version_chunk(&self, hash: &str, offset: u64, size: u64) -> Result<Vec<u8>, OxenError> {
         let storage = self.storage
             .lock()
             .map_err(|e| OxenError::basic_str(format!("Failed to acquire lock: {}", e)))?;
@@ -152,7 +164,7 @@ impl VersionStore for InMemoryVersionStore {
         Ok(data[start..end].to_vec())
     }
 
-    fn list_version_chunks(&self, hash: &str) -> Result<Vec<u32>, OxenError> {
+    async fn list_version_chunks(&self, hash: &str) -> Result<Vec<u32>, OxenError> {
         let chunks = self.chunks
             .lock()
             .map_err(|e| OxenError::basic_str(format!("Failed to acquire lock: {}", e)))?;
@@ -167,23 +179,27 @@ impl VersionStore for InMemoryVersionStore {
     }
 
     async fn combine_version_chunks(&self, hash: &str, _cleanup: bool) -> Result<PathBuf, OxenError> {
-        let chunks = self.chunks
-            .lock()
-            .map_err(|e| OxenError::basic_str(format!("Failed to acquire lock: {}", e)))?;
-        
-        let file_chunks = chunks.get(hash)
-            .ok_or_else(|| OxenError::basic_str(format!("No chunks found for version: {}", hash)))?;
-        
-        // Combine chunks in order
-        let mut chunk_numbers: Vec<u32> = file_chunks.keys().cloned().collect();
-        chunk_numbers.sort();
-        
-        let mut combined_data = Vec::new();
-        for chunk_number in chunk_numbers {
-            if let Some(chunk_data) = file_chunks.get(&chunk_number) {
-                combined_data.extend_from_slice(chunk_data);
+        // First, collect all chunk data without holding the lock across await
+        let combined_data = {
+            let chunks = self.chunks
+                .lock()
+                .map_err(|e| OxenError::basic_str(format!("Failed to acquire lock: {}", e)))?;
+            
+            let file_chunks = chunks.get(hash)
+                .ok_or_else(|| OxenError::basic_str(format!("No chunks found for version: {}", hash)))?;
+            
+            // Combine chunks in order
+            let mut chunk_numbers: Vec<u32> = file_chunks.keys().cloned().collect();
+            chunk_numbers.sort();
+            
+            let mut combined_data = Vec::new();
+            for chunk_number in chunk_numbers {
+                if let Some(chunk_data) = file_chunks.get(&chunk_number) {
+                    combined_data.extend_from_slice(chunk_data);
+                }
             }
-        }
+            combined_data
+        }; // Lock is released here
         
         // Store the combined data as a regular version
         self.store_version(hash, &combined_data).await?;
@@ -192,7 +208,7 @@ impl VersionStore for InMemoryVersionStore {
         Ok(PathBuf::from(format!("/memory/{}", hash)))
     }
 
-    fn open_version(&self, hash: &str) -> Result<Box<dyn ReadSeek>, OxenError> {
+    fn open_version(&self, hash: &str) -> Result<Box<dyn ReadSeek + Send + Sync>, OxenError> {
         let storage = self.storage
             .lock()
             .map_err(|e| OxenError::basic_str(format!("Failed to acquire lock: {}", e)))?;
@@ -237,7 +253,7 @@ impl VersionStore for InMemoryVersionStore {
         Ok(storage.contains_key(hash))
     }
 
-    fn delete_version(&self, hash: &str) -> Result<(), OxenError> {
+    async fn delete_version(&self, hash: &str) -> Result<(), OxenError> {
         {
             let mut storage = self.storage
                 .lock()
@@ -273,8 +289,6 @@ impl VersionStore for InMemoryVersionStore {
 }
 
 // Ensure the type is thread-safe
-unsafe impl Send for InMemoryVersionStore {}
-unsafe impl Sync for InMemoryVersionStore {}
 impl RefUnwindSafe for InMemoryVersionStore {}
 
 #[cfg(test)]
@@ -303,7 +317,7 @@ mod tests {
         assert!(versions.contains(&hash.to_string()));
         
         // Test deletion
-        assert!(store.delete_version(hash).is_ok());
+        assert!(store.delete_version(hash).await.is_ok());
         assert!(!store.version_exists(hash).unwrap());
     }
 
@@ -317,11 +331,11 @@ mod tests {
         assert!(store.store_version_chunk(hash, 1, b"world!").await.is_ok());
         
         // List chunks
-        let chunks = store.list_version_chunks(hash).unwrap();
+        let chunks = store.list_version_chunks(hash).await.unwrap();
         assert_eq!(chunks, vec![0, 1]);
         
         // Combine chunks
-        let _path = store.combine_version_chunks(hash, false).unwrap();
+        let _path = store.combine_version_chunks(hash, false).await.unwrap();
         
         // Verify combined data
         let combined = store.get_version(hash).await.unwrap();

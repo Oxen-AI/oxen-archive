@@ -47,24 +47,24 @@ This directory contains HTTP-based integration tests for the Oxen server. These 
           ┌─────────────────────┼──────────────────┐
           │                     │                  │
 ┌─────────▼─────────┐  ┌────────▼───────┐  ┌───────▼───────┐
-│ LocalVersionStore │  │ S3VersionStore │  │ InMemoryStore │ 
-│   (Production)    │  │  (Production)  │  │    (MOCK)     │ ◄── FAST!
-│   Filesystem I/O  │  │   AWS S3 API   │  │   HashMap     │
-│     ~50ms         │  │    ~100ms      │  │    ~5μs       │
+│ LocalVersionStore │  │ S3VersionStore │  │ (InMemoryStore│ 
+│   (Production)    │  │  (Production)  │  │  - DISABLED)  │
+│   Filesystem I/O  │  │   AWS S3 API   │  │               │
+│     ~50ms         │  │    ~100ms      │  │               │
 └───────────────────┘  └────────────────┘  └───────────────┘
-         │                     │                   │
-    ┌────▼────┐         ┌──────▼──────┐       ┌────▼────┐
-    │  Disk   │         │   AWS S3    │       │  RAM    │
-    │ Storage │         │   Buckets   │       │ HashMap │
-    └─────────┘         └─────────────┘       └─────────┘
+         │                     │                   
+    ┌────▼────┐         ┌──────▼──────┐       
+    │  Disk   │         │   AWS S3    │       
+    │ Storage │         │   Buckets   │       
+    └─────────┘         └─────────────┘       
 ```
 
 ### What This Achieves For Testing
 - **🌐 Real HTTP**: Actual network requests test the full HTTP stack
 - **🔧 Real Server**: Complete oxen-server process with all middleware
-- **⚡ Fast Storage**: In-memory backend eliminates slow I/O (1000x speedup)
+- **💾 Real Storage**: Filesystem-based storage for realistic testing
 - **🎯 Real APIs**: All business logic and API endpoints are exercised
-- **🔒 Isolation**: Each test gets fresh in-memory state
+- **🔒 Isolation**: Each test gets fresh filesystem state in unique directories
 
 ## Running Tests
 
@@ -78,34 +78,27 @@ cargo test --test integration_tests -- --nocapture
 cargo test --test integration_tests oxen_server_health_should_be_accessible_via_http_get -- --nocapture
 ```
 
-## In-Memory Storage for Speed
+## Test Repository Creation
 
-For faster test development and CI, use the `InMemoryVersionStore` instead of filesystem I/O:
+The integration tests use filesystem-based repositories for realistic testing. All storage operations use the actual liboxen repository implementation.
 
 ### Available Repository Creation Functions
-- `make_initialized_repo_with_test_files_in_memory()` - Basic text and CSV files with in-memory storage
-- `make_initialized_repo_with_test_user_in_memory()` - CSV-focused repository with test user
-- `make_initialized_repo_with_in_memory_storage()` - Empty repository with in-memory storage
-- `make_initialized_repo_with_test_files()` - Basic test files with filesystem storage
+- `make_initialized_repo_with_test_files()` - Basic text and CSV files
+- `make_initialized_repo_with_test_user()` - CSV-focused repository with test user
+- `TestRepositoryBuilder` - Fluent API for custom repository creation
 
 ### Custom Test Data with Fluent API
 ```rust
-// For fast tests with in-memory storage
-let store = TestRepositoryBuilder::new("namespace", "repo_name")
+// Create test repository with custom files
+let test_repo = TestRepositoryBuilder::new("namespace", "repo_name")
     .with_file("data.csv", "id,name\n1,Alice\n2,Bob")
     .with_file("config.json", r#"{"version": "1.0"}"#)
     .with_commit_message("Test data setup")
-    .with_memory_storage()  // Fast in-memory storage
     .build()
-    .unwrap();
+    .await?;
 
-// For realistic tests with filesystem storage (default)
-let store = TestRepositoryBuilder::new("namespace", "repo_name")
-    .with_file("data.csv", "id,name\n1,Alice\n2,Bob")
-    .with_file("config.json", r#"{"version": "1.0"}"#)
-    .with_commit_message("Test data setup")
-    .build()
-    .unwrap();
+// Access the repository directory
+let repo_dir = test_repo.repo_dir();
 ```
 
 ## Debugging Tips
@@ -299,7 +292,7 @@ cargo test  # Everything just works!
 | **Setup Time**            | Manual server start                       | ✅ Automatic                       |
 | **Debugging**             | Two processes                             | ✅ Single debug session            |
 | **Test Isolation**        | ❌ Shared state                            | ✅ Complete isolation              |
-| **Parallel Testing**      | ✅ Server should be multi-client by design | ? Thread-safe port leasing system |
+| **Parallel Testing**      | ❌ Port conflicts, shared state issues     | ✅ Thread-safe port leasing system |
 | **CI/CD Reliability**     | ❌ Server management                       | ✅ Self-contained                  |
 | **Developer Onboarding**  | Multi-step setup                          | ✅ `cargo test`                    |
 | **Failure Investigation** | Log mining                                | ✅ Pinpoint debugging              |
@@ -325,7 +318,7 @@ For a **contributor-driven project**, removing friction from the development wor
 
 This **reduces the barrier to contribution** and makes the codebase more accessible to new developers, which directly benefits the project's growth and community engagement.
 
-The **imperfect storage mocking** (in-memory storage) actually helps catch real-world edge cases that a perfectly mocked environment would miss - making the tests more valuable, not less.
+The **real filesystem storage** helps catch real-world edge cases and ensures tests behave like production - making the tests more valuable and realistic.
 
 ## 🔄 **When to Use Each Approach**
 

@@ -6,9 +6,8 @@ use tokio::time::sleep;
 // Import from the server crate - we'll need to add this as a dependency
 // use oxen_server;
 
-// TODO: Re-enable once async trait compatibility is fixed
-// pub mod in_memory_storage;
-// pub use in_memory_storage::InMemoryVersionStore;
+pub mod in_memory_storage;
+pub use in_memory_storage::InMemoryVersionStore;
 
 pub mod test_repository_builder;
 pub use test_repository_builder::TestRepositoryBuilder;
@@ -257,9 +256,7 @@ impl TestRepoBuilder {
 
         // Initialize repository with or without in-memory storage
         let repo = if self.use_in_memory_storage {
-            // TODO: Fix in-memory storage compatibility with async traits
-            // init_repo_with_in_memory_storage(&repo_dir).await?
-            liboxen::repositories::init(&repo_dir)?
+            init_repo_with_in_memory_storage(&repo_dir).await?
         } else {
             liboxen::repositories::init(&repo_dir)?
         };
@@ -450,14 +447,10 @@ impl TestEnvironmentBuilder {
             let repo_type = self.repo_type.unwrap_or(RepoType::WithTestFiles);
             let _result = match repo_type {
                 RepoType::WithTestFiles => {
-                    // TODO: Fix in-memory storage compatibility
-                    // make_initialized_repo_with_test_files_in_memory(&test_dir).await?
-                    make_initialized_repo_with_test_files(&test_dir).await?
+                    make_initialized_repo_with_test_files_in_memory(&test_dir).await?.0
                 }
                 RepoType::WithTestUser => {
-                    // TODO: Fix in-memory storage compatibility
-                    // make_initialized_repo_with_test_user_in_memory(&test_dir).await?
-                    make_initialized_repo_with_test_files(&test_dir).await?
+                    make_initialized_repo_with_test_user_in_memory(&test_dir).await?.0
                 }
                 RepoType::WithCsv => {
                     let result = TestRepoBuilder::new()
@@ -465,8 +458,7 @@ impl TestEnvironmentBuilder {
                         .repo_name("csv_repo")
                         .namespace("test_user")
                         .add_file("products.csv", "product,price,category\nLaptop,999.99,Electronics\nChair,149.50,Furniture\nBook,19.99,Education")
-                        // TODO: Fix in-memory storage compatibility
-                        // .use_in_memory_storage(true)
+                        .use_in_memory_storage(true)
                         .build()
                         .await?;
                     result.repo_dir
@@ -476,8 +468,7 @@ impl TestEnvironmentBuilder {
                         .base_dir(&test_dir)
                         .repo_name("empty_repo")
                         .namespace("test_user")
-                        // TODO: Fix in-memory storage compatibility
-                        // .use_in_memory_storage(true)
+                        .use_in_memory_storage(true)
                         .build()
                         .await?;
                     result.repo_dir
@@ -651,9 +642,14 @@ pub async fn make_initialized_repo_with_test_files_in_memory(base_dir: &std::pat
 
 /// Helper function to initialize a repository with in-memory storage using composition
 /// This creates the repository structure and injects the in-memory storage
-/// TODO: Fix in-memory storage compatibility with async trait changes
 #[allow(dead_code)]
 async fn init_repo_with_in_memory_storage(repo_dir: &std::path::Path) -> Result<liboxen::model::LocalRepository, Box<dyn std::error::Error>> {
-    // For now, just use regular initialization until in-memory storage is fixed
-    Ok(liboxen::repositories::init(repo_dir)?)
+    // First initialize the repository filesystem structure
+    let _repo = liboxen::repositories::init(repo_dir)?;
+    
+    // Create the repository with in-memory storage
+    let in_memory_store = std::sync::Arc::new(InMemoryVersionStore::new());
+    let repo = liboxen::model::LocalRepository::with_version_store(repo_dir, in_memory_store)?;
+    
+    Ok(repo)
 }

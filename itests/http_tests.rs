@@ -11,3 +11,4 @@ mod test_file_put_to_directory;
 mod test_put_file_naming_behavior;
 mod test_put_path_validation;
 mod test_port_leasing;
+mod test_put_internal_server_error;

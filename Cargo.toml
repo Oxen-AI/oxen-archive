@@ -35,8 +35,8 @@ async-recursion = "1.0.5"
 async-std = { version = "1.12.0", features = ["unstable"] }
 async-tar = "0.5.0"
 async-trait = "0.1.80"
-arrow-json = "53.2.0"
-arrow = "53.2.0"
+arrow-json = "54.2.0"
+arrow = "54.2.0"
 bincode = "1.3.3"
 blocking = "1.6.1"
 bytecount = "0.6.3"
@@ -45,9 +45,9 @@ bytesize = "1.3.0"
 bytevec = "0.2.0"
 chrono = "0.4.30"
 clap = { version = "4.4.2", features = ["cargo"] }
-colored = "2.0.4"
+colored = "3.0.0"
 comfy-table = "7.0.1"
-duckdb = { package = "duckdb", version = "1.1.1", default-features = false, optional = true, features = [
+duckdb = { package = "duckdb", version = "1.2.2", default-features = false, optional = true, features = [
     "serde_json",
 ] }
 deadqueue = "0.2.4"
@@ -80,7 +80,7 @@ lazy_static = "1.4.0"
 lofty = "0.21.0"
 log = "0.4.20"
 lru = "0.12.0"
-mockito = "1.1.0"
+mockito = "1.7.0"
 mp4 = "0.14.0"
 mime = "0.3.17"
 minus = { version = "5.4.0", features = ["static_output", "search"] }
@@ -110,7 +110,7 @@ reqwest = { version = "0.12.2", features = [
     "gzip",
     "stream",
 ] }
-rocksdb = { version = "0.22.0", default-features = false, features = [
+rocksdb = { version = "0.23.0", default-features = false, features = [
     "lz4",
     "snappy",
     "zlib",

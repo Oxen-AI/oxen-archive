@@ -990,7 +990,7 @@ pub async fn read_df(path: impl AsRef<Path>, opts: DFOpts) -> Result<DataFrame, 
     }
 
     let extension = path.extension().and_then(OsStr::to_str);
-    
+
     if let Some(extension) = extension {
         read_df_with_extension(path, extension, &opts).await
     } else {
@@ -1006,7 +1006,7 @@ pub async fn read_df_with_extension(
 ) -> Result<DataFrame, OxenError> {
     let path = path.as_ref();
     let extension = extension.as_ref();
-    
+
     p_read_df_with_extension(path, extension, opts).await.map_err(|e| {
         log::error!("Error Reading DataFrame {e:?} - {:?}", path);
         OxenError::DataFrameError(format!("Error Reading DataFrame {e:?}").into())

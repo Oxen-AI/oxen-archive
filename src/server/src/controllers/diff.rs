@@ -290,13 +290,13 @@ pub async fn create_df_diff(
     body: String,
 ) -> actix_web::Result<HttpResponse, OxenHttpError> {
     log::info!("🚀 Starting create_df_diff function");
-    
+
     log::debug!("📥 Extracting request data");
     let app_data = app_data(&req)?;
     let namespace = path_param(&req, "namespace")?;
     let name = path_param(&req, "repo_name")?;
     log::info!("🏢 Got namespace: {}, repo name: {}", namespace, name);
-    
+
     log::debug!("📂 Getting repository");
     let repository = get_repo(&app_data.path, namespace, name)?;
     log::info!("✅ Successfully retrieved repository at path: {}", repository.path.display());
@@ -339,14 +339,14 @@ pub async fn create_df_diff(
 
     log::debug!("🔍 Resolving commit revisions");
     log::info!("📍 Left version: {}, Right version: {}", data.left.version, data.right.version);
-    
+
     let commit_1 = repositories::revisions::get(&repository, &data.left.version)?
         .ok_or_else(|| {
             log::error!("💥 Failed to find left commit revision: {}", data.left.version);
             OxenError::revision_not_found(data.left.version.into())
         })?;
     log::info!("✅ Found left commit: {}", commit_1);
-    
+
     let commit_2 = repositories::revisions::get(&repository, &data.right.version)?
         .ok_or_else(|| {
             log::error!("💥 Failed to find right commit revision: {}", data.right.version);
@@ -361,7 +361,7 @@ pub async fn create_df_diff(
             OxenError::ResourceNotFound(format!("{}@{}", resource_1.display(), commit_1).into())
         })?;
     log::info!("✅ Got left file node: {}", resource_1.display());
-    
+
     let node_2 =
         repositories::entries::get_file(&repository, &commit_2, &resource_2)?.ok_or_else(|| {
             log::error!("💥 Failed to find right file: {}@{}", resource_2.display(), commit_2);
@@ -396,7 +396,7 @@ pub async fn create_df_diff(
     let entry_1 = CommitEntry::from_file_node(&node_1);
     let entry_2 = CommitEntry::from_file_node(&node_2);
     log::debug!("📦 Created commit entries from file nodes");
-    
+
     log::info!("💽 Caching tabular diff with compare_id: {}", compare_id);
     repositories::diffs::cache_tabular_diff(
         &repository,
@@ -411,8 +411,8 @@ pub async fn create_df_diff(
     let mut messages: Vec<OxenMessage> = vec![];
 
     if diff_result.summary.dupes.left > 0 || diff_result.summary.dupes.right > 0 {
-        log::warn!("⚠️ Found duplicates - Left: {}, Right: {}", 
-                  diff_result.summary.dupes.left, 
+        log::warn!("⚠️ Found duplicates - Left: {}, Right: {}",
+                  diff_result.summary.dupes.left,
                   diff_result.summary.dupes.right);
         let cdupes = CompareDupes::from_tabular_diff_dupes(&diff_result.summary.dupes);
         messages.push(cdupes.to_message());

@@ -11,7 +11,7 @@ pub struct ForkRequest {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ForkStatus {
     Started,
-    Counting(u32),
+    Counting(usize),
     InProgress(f32),
     Complete,
     Failed(String),

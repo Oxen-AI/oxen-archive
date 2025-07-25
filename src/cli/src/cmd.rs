@@ -45,6 +45,12 @@ pub use embeddings::EmbeddingsCmd;
 pub mod fetch;
 pub use fetch::FetchCmd;
 
+pub mod fork;
+pub use fork::ForkCmd;
+
+pub mod fork_status;
+pub use fork_status::ForkStatusCmd;
+
 pub mod info;
 pub use info::InfoCmd;
 

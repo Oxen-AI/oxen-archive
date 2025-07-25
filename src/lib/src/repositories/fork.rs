@@ -1,10 +1,12 @@
 use crate::error::OxenError;
 use crate::util::fs as oxen_fs;
-use crate::view::fork::{ForkStartResponse, ForkStatus, ForkStatusFile, ForkStatusResponse};
-use std::fs;
+use crate::view::fork::{ForkStartResponse, ForkStatus, ForkStatusResponse};
+use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
+use std::io::{BufWriter, BufReader, ErrorKind};
+use jwalk::WalkDir;
+use std::fs::File;
 use std::thread;
-use toml;
 
 pub const FORK_STATUS_FILE: &str = ".oxen/fork_status.toml";
 
@@ -13,8 +15,17 @@ fn write_status(repo_path: &Path, status: &ForkStatus) -> Result<(), OxenError> 
     if let Some(parent) = status_path.parent() {
         oxen_fs::create_dir_all(parent)?;
     }
-    let status_file: ForkStatusFile = status.clone().into();
-    fs::write(status_path, toml::to_string(&status_file)?)?;
+
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&status_path)?;
+    
+    let mut writer = BufWriter::new(file);
+
+    bincode::serialize_into(&mut writer, status).map_err(|e| {
+        OxenError::basic_str(format!("Failed to serialize and append fork status: {}", e))
+    })?;
     Ok(())
 }
 
@@ -23,30 +34,40 @@ fn read_status(repo_path: &Path) -> Result<Option<ForkStatus>, OxenError> {
     if !status_path.exists() {
         return Ok(None);
     }
+    let file = File::open(&status_path)?;
+    let mut reader = BufReader::new(file);
 
-    let content = fs::read_to_string(&status_path)?;
-    let status_file: ForkStatusFile = toml::from_str(&content).map_err(|e| {
-        log::error!(
-            "Failed to parse fork status on file: {:?} error: {}",
-            status_path,
-            e
-        );
-        OxenError::basic_str(format!("Failed to parse fork status on file: {}", e))
-    })?;
+    let mut last_status: Option<ForkStatus> = None;
 
-    let status = &status_file.status;
+    loop {
+        match bincode::deserialize_from(&mut reader) {
+            Ok(status) => {
+                last_status = Some(status);
+            }
+            Err(e) => {
 
-    Ok(Some(match status {
-        ForkStatus::Started => ForkStatus::Started,
-        ForkStatus::InProgress(_) => ForkStatus::InProgress(status_file.progress.unwrap_or(0.0)),
-        ForkStatus::Complete => ForkStatus::Complete,
-        ForkStatus::Counting(_) => ForkStatus::Counting(status_file.progress.unwrap_or(0.0) as u32),
-        ForkStatus::Failed(_) => ForkStatus::Failed(
-            status_file
-                .error
-                .unwrap_or_else(|| "Unknown error".to_string()),
-        ),
-    }))
+                if let bincode::ErrorKind::Io(io_err) = e.as_ref() {
+                    if io_err.kind() == ErrorKind::UnexpectedEof {
+                        // We've successfully read all complete records.
+                        break;
+                    }
+                }
+                
+
+                log::error!(
+                    "Failed to deserialize from fork status log: {:?}, error: {}",
+                    status_path,
+                    e
+                );
+
+                return Err(OxenError::basic_str(format!(
+                    "Corrupt fork status log: {}",
+                    e
+                )));
+            }
+        }
+    }
+    Ok(last_status)
 }
 
 pub fn start_fork(
@@ -63,12 +84,18 @@ pub fn start_fork(
     oxen_fs::create_dir_all(&new_path)?;
     write_status(&new_path, &ForkStatus::Counting(0))?;
 
+    let mut current_count: usize = 0;
     let new_path_clone = new_path.clone();
-    let mut current_count = 0;
 
     thread::spawn(move || {
-        let total_items = match count_items(&original_path, &new_path, &mut current_count) {
-            Ok(count) => count as f32,
+        let total_items = match count_items(&original_path) {
+            Ok(count) => {
+                current_count = current_count+ count;
+                write_status(&new_path, &ForkStatus::Counting(current_count)).unwrap_or_else(|e| {
+                    log::error!("Failed to write counting status: {}", e);
+                });
+                count as f32
+            },
             Err(e) => {
                 log::error!("Failed to count items: {}", e);
                 write_status(&new_path, &ForkStatus::Failed(e.to_string())).unwrap_or_else(|e| {
@@ -162,24 +189,33 @@ fn copy_dir_recursive(
     Ok(())
 }
 
-fn count_items(path: &Path, status_repo: &Path, current_count: &mut u32) -> Result<u32, OxenError> {
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.ends_with(".oxen/workspaces") {
-            continue;
-        }
-        if path.is_dir() {
-            count_items(&path, status_repo, current_count)?;
-        } else {
-            *current_count += 1;
-            if *current_count % 10 == 0 {
-                write_status(status_repo, &ForkStatus::Counting(*current_count))?;
+fn count_items(path: &Path) -> Result<usize, OxenError> {
+
+    // Create a walker that will recursively visit all entries.
+    // .into_iter() gives us an iterator over Result<DirEntry, walkdir::Error>.
+    let walker = WalkDir::new(path);
+
+
+    let file_count = walker
+        .into_iter()
+        .filter_map(Result::ok) // A more concise way to unwrap the Result
+        .filter(|entry| {
+            if entry.file_type().is_dir() {
+                return false;
             }
-        }
-    }
-    Ok(*current_count)
+            if entry.file_type().is_file() {
+                if entry.path().ends_with(".oxen/workspaces") {
+                    return false;
+                }
+                return true;
+            }
+            false
+        })
+        .count();
+
+    Ok(file_count)
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -216,7 +252,7 @@ mod tests {
                 start_fork(original_repo_path.clone(), forked_repo_path.clone())?;
                 let mut current_status = "in_progress".to_string();
                 let mut attempts = 0;
-                const MAX_ATTEMPTS: u32 = 50; // 5 seconds timeout (50 * 100ms)
+                const MAX_ATTEMPTS: u32 = 500; // 5 seconds timeout (50 * 100ms)
 
                 while current_status == "in_progress" && attempts < MAX_ATTEMPTS {
                     tokio::time::sleep(Duration::from_millis(1000)).await; // Wait for 100 milliseconds

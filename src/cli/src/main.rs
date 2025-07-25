@@ -38,6 +38,8 @@ async fn main() -> ExitCode {
         Box::new(cmd::DiffCmd),
         Box::new(cmd::DownloadCmd),
         Box::new(cmd::FetchCmd),
+        Box::new(cmd::ForkCmd),
+        Box::new(cmd::ForkStatusCmd),
         Box::new(cmd::EmbeddingsCmd),
         Box::new(cmd::InfoCmd),
         Box::new(cmd::InitCmd),

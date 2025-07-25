@@ -192,7 +192,7 @@ mod tests {
     use crate::test;
 
     #[tokio::test]
-    async fn test_nownownow_fork_operations() -> Result<(), OxenError> {
+    async fn test_fork_operations() -> Result<(), OxenError> {
         test::run_empty_local_repo_test_async(|original_repo| {
             async move {
                 let original_repo_path = original_repo.path;

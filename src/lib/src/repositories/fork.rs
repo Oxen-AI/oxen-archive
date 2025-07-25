@@ -219,7 +219,7 @@ mod tests {
                 const MAX_ATTEMPTS: u32 = 50; // 5 seconds timeout (50 * 100ms)
 
                 while current_status == "in_progress" && attempts < MAX_ATTEMPTS {
-                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                    tokio::time::sleep(Duration::from_millis(1000)).await; // Wait for 100 milliseconds
                     current_status = match get_fork_status(&forked_repo_path) {
                         Ok(status) => status.status,
                         Err(e) => {
@@ -233,13 +233,12 @@ mod tests {
                     attempts += 1;
                 }
 
-                assert!(forked_repo_path.exists());
-
                 if attempts >= MAX_ATTEMPTS {
                     return Err(OxenError::basic_str("Fork operation timed out"));
                 }
 
                 let file_path = original_repo_path.clone().join("dir/test_file.txt");
+                assert!(forked_repo_path.exists());
 
                 // Verify that the content of .oxen/config.toml is the same in both repos
                 let new_file_path = forked_repo_path.join("dir/test_file.txt");
@@ -339,7 +338,7 @@ mod tests {
                         match std::fs::remove_dir_all(new_repo_path_2_prefix) {
                             Ok(_) => break,
                             Err(e) => {
-                                // thread::sleep(Duration::from_millis(100));
+                                tokio::time::sleep(Duration::from_millis(100)).await;
                                 retries -= 1;
                                 if retries == 0 {
                                     return Err(OxenError::from(e));

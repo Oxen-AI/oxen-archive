@@ -106,16 +106,6 @@ impl VersionStore for InMemoryVersionStore {
         self.store_version(hash, &data).await
     }
 
-    fn store_version_from_path_sync(&self, hash: &str, file_path: &Path) -> Result<(), OxenError> {
-        let data = std::fs::read(file_path).map_err(|e| OxenError::IO(e))?;
-
-        // For in-memory storage, we can store synchronously
-        self.storage
-            .lock()
-            .map_err(|e| OxenError::basic_str(format!("Failed to acquire lock: {}", e)))?
-            .insert(hash.to_string(), data);
-        Ok(())
-    }
 
     async fn store_version_from_reader(
         &self,

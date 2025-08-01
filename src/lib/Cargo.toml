@@ -25,7 +25,11 @@ actix-files = "0.6.0"
 actix-web = { version = "4", features = ["rustls"] }
 approx = "0.5.1"
 astral-tokio-tar = "0.5.2"
-async-compression = { version = "0.4.2", features = ["futures-io", "gzip", "tokio"] }
+async-compression = { version = "0.4.2", features = [
+    "futures-io",
+    "gzip",
+    "tokio",
+] }
 async-recursion = "1.0.0"
 async-std = { version = "1.12.0", features = ["unstable"] }
 async-trait = "0.1"
@@ -81,6 +85,7 @@ mockito = "1.1.0"
 mp4 = "0.14.0"
 nom = "7.1.1"
 num_cpus = "1.13.1"
+par-stream = { version = "0.10.2", features = ["runtime-tokio"] }
 pluralizer = "0.4.0"
 polars = { version = "0.45.0", features = [
     "lazy",
@@ -125,6 +130,7 @@ tempfile = "3.8.0"
 threadpool = "1.8.1"
 time = { version = "0.3.20", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1.17"
 tokio-util = "0.7.8"
 toml = "0.8.12"
 unicode-truncate = "2.0.0"
@@ -136,6 +142,9 @@ words-count = "0.1.5"
 xxhash-rust = { version = "0.8.5", features = ["xxh3"] }
 zip = "2.4.1"
 pathdiff = "0.2.3"
+
+[dev-dependencies]
+serial_test = "3.2.0"
 
 [lib]
 name = "liboxen"

@@ -1,3 +1,5 @@
+### All development on Oxen has been moved to: https://github.com/Oxen-AI/Oxen.
+
 # 🐂 Oxen
 
 Create a world where everyone can contribute to an Artificial General Intelligence, starting with the data.
